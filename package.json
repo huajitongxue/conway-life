@@ -1,0 +1,57 @@
+{
+  "name": "conway-life",
+  "version": "1.1.0",
+  "description": "离线康威生命游戏，支持绘制细胞、系统图案和自定义预设。",
+  "main": "electron/main.cjs",
+  "author": "huajitongxue",
+  "license": "MIT",
+  "private": true,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/huajitongxue/conway-life.git"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "start": "electron .",
+    "icon": "node scripts/create-icon.cjs",
+    "pack": "electron-builder --win --x64 --dir",
+    "dist": "electron-builder --win portable --x64 --publish never"
+  },
+  "devDependencies": {
+    "electron": "44.7.0",
+    "electron-builder": "26.15.3"
+  },
+  "build": {
+    "appId": "io.github.huajitongxue.conwaylife",
+    "productName": "康威生命游戏",
+    "asar": true,
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "index.html",
+      "css/**/*",
+      "js/**/*",
+      "electron/**/*",
+      "assets/icon.ico",
+      "VERSION",
+      "LICENSE"
+    ],
+    "win": {
+      "icon": "assets/icon.ico",
+      "target": [
+        {
+          "target": "portable",
+          "arch": ["x64"]
+        }
+      ]
+    },
+    "portable": {
+      "artifactName": "Conway-Life-${version}-Windows-${arch}.exe",
+      "requestExecutionLevel": "user"
+    }
+  }
+}

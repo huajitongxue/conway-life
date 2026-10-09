@@ -5,7 +5,7 @@
 *.tmp
 *.bak
 
-# 当前发布仅包含网页源码，本地验证脚本不作为运行依赖
+# 本地验证脚本不作为运行依赖
 /tools/
 
 # 编辑器和 Agent 本地状态
@@ -18,6 +18,7 @@
 
 # 本地依赖、系统文件
 node_modules/
+/dist/
 .DS_Store
 Thumbs.db
 Desktop.ini
