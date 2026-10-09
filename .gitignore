@@ -1,0 +1,23 @@
+# 本地截图、浏览器日志与临时文件
+/屏幕截图*.png
+/debug.log
+*.log
+*.tmp
+*.bak
+
+# 当前发布仅包含网页源码，本地验证脚本不作为运行依赖
+/tools/
+
+# 编辑器和 Agent 本地状态
+/.agents/
+/.codex/
+/.claude/
+/.gitnexus/
+/.vscode/
+/.idea/
+
+# 本地依赖、系统文件
+node_modules/
+.DS_Store
+Thumbs.db
+Desktop.ini

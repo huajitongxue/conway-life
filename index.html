@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#07131a">
+  <title>康威生命游戏</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <main class="app">
+    <header class="intro">
+      <div>
+        <p class="eyebrow">B3 / S23 · 8 邻域</p>
+        <h1>康威生命游戏</h1>
+        <p>用鼠标绘制细胞，观察简单规则如何生成复杂的生命形态。</p>
+      </div>
+    </header>
+
+    <section class="topbar" aria-label="预设与播放控制">
+      <div class="topbar-side">
+        <button class="system-toggle" id="systemToggle" type="button" aria-expanded="false">系统预设 ▾</button>
+        <div class="dropdown" id="systemMenu" aria-label="系统预设列表">
+          <button type="button" data-preset-key="glider">滑翔机</button>
+          <button type="button" data-preset-key="pulsar">脉冲星</button>
+          <button type="button" data-preset-key="gosper">高斯帕滑翔机枪</button>
+        </div>
+      </div>
+
+      <div class="topbar-center">
+        <button class="play-top" id="topPlayButton" type="button">▶ 播放</button>
+      </div>
+
+      <div class="topbar-side">
+        <button class="custom-toggle" id="openEditorButton" type="button">＋ 自定义形状</button>
+      </div>
+    </section>
+
+    <section class="stage-shell" aria-label="生命游戏工作区">
+      <div class="stage-column">
+        <div class="stage">
+          <canvas id="gameCanvas" width="1200" height="800" aria-label="康威生命游戏画布"></canvas>
+          <div class="stage-hint">左键绘制 · 右键擦除 · 拖拽预设到这里</div>
+        </div>
+      </div>
+
+      <aside class="control-panel" aria-label="游戏控制与预设">
+        <section class="library" aria-label="自定义预设库">
+          <div class="library-heading">
+            <h2>我的预设</h2>
+            <span>点击居中放置，长按拖拽到场地</span>
+          </div>
+          <div class="preset-library" id="presetLibrary"></div>
+        </section>
+
+        <div class="stats-row">
+          <div class="stat">
+            <span class="stat-label">当前代数</span>
+            <strong class="stat-value" id="generationValue">0</strong>
+          </div>
+          <div class="stat">
+            <span class="stat-label">存活细胞</span>
+            <strong class="stat-value" id="populationValue">0</strong>
+          </div>
+          <div class="stat">
+            <span class="stat-label">边界模式</span>
+            <strong class="stat-value" id="boundaryValue">环绕</strong>
+          </div>
+          <div class="speed-control">
+            <div class="speed-main-row">
+              <label for="speedRange">速度</label>
+              <input id="speedRange" type="range" min="1" max="60" value="10">
+              <span class="speed-value" id="speedValue">10 步/秒</span>
+            </div>
+            <div class="speed-adjustments" aria-label="速度微调">
+              <button type="button" data-speed-delta="1">＋1</button>
+              <button type="button" data-speed-delta="10">＋10</button>
+              <button type="button" data-speed-delta="-1">−1</button>
+              <button type="button" data-speed-delta="-10">−10</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="actions-row">
+          <div class="action-group">
+            <button id="playButton" type="button">▶ 播放</button>
+            <button id="stepButton" type="button">单步</button>
+            <button id="clearButton" class="danger-button" type="button">清空</button>
+            <button id="randomButton" type="button">随机</button>
+          </div>
+          <div class="action-group">
+            <button id="boundaryButton" class="toggle-button is-active" type="button">边界：环绕</button>
+            <button id="gridButton" class="toggle-button is-active" type="button">网格线：开</button>
+          </div>
+        </div>
+
+        <p class="key-help"><kbd>Space</kbd> 播放/暂停 · <kbd>N</kbd> 单步 · <kbd>R</kbd> 随机 · <kbd>C</kbd> 清空</p>
+      </aside>
+    </section>
+  </main>
+
+  <div class="modal" id="editorModal" role="dialog" aria-modal="true" aria-labelledby="editorTitle">
+    <div class="editor-panel">
+      <div class="editor-head">
+        <div>
+          <h2 id="editorTitle">绘制自定义形状</h2>
+          <p>点击或拖拽点亮格子，右键擦除。保存后会自动裁剪外围空白。</p>
+        </div>
+        <button class="icon-button" id="closeEditorButton" type="button" aria-label="关闭编辑器">×</button>
+      </div>
+      <div class="editor-stage">
+        <canvas id="editorCanvas" width="800" height="600" aria-label="自定义形状编辑画布"></canvas>
+      </div>
+      <div class="editor-actions">
+        <button id="clearEditorButton" type="button">清空编辑区</button>
+        <div class="right-actions">
+          <button id="cancelEditorButton" type="button">取消</button>
+          <button id="saveEditorButton" class="toggle-button is-active" type="button">保存为新预设</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script src="js/script.js"></script>
+</body>
+</html>
