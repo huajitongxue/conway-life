@@ -25,9 +25,19 @@
                 <h2>预设库</h2>
                 <span>系统预设与自定义预设</span>
               </div>
-              <button class="custom-toggle" id="openEditorButton" type="button">＋ 自定义形状</button>
+              <button class="custom-toggle" id="openShapeManagerButton" type="button">形状管理</button>
             </div>
-            <p class="library-help">拖拽卡片到场地放置，点击卡片不会改变地图。</p>
+            <p class="library-help" id="libraryHelp">拖拽卡片到场地放置，点击卡片不会改变地图。</p>
+            <div class="library-io-row" id="presetIoRow">
+              <button class="library-io-button" id="exportPresetsButton" type="button">导出形状</button>
+              <button class="library-io-button" id="importPresetsButton" type="button">导入形状</button>
+              <input class="library-io-input" id="importPresetsInput" type="file" accept="application/json,.json" aria-label="选择预设文件">
+            </div>
+            <div class="library-select-row" id="presetSelectRow" hidden>
+              <button class="library-io-button" id="selectAllPresetsButton" type="button">全选</button>
+              <button class="library-io-button is-primary" id="exportSelectedButton" type="button">导出所选</button>
+              <button class="library-io-button" id="cancelSelectButton" type="button">取消</button>
+            </div>
           </div>
           <div class="preset-library" id="presetLibrary"></div>
         </section>
@@ -79,12 +89,25 @@
     </section>
   </main>
 
+  <div class="modal" id="shapeManagerModal" role="dialog" aria-modal="true" aria-labelledby="shapeManagerTitle">
+    <div class="editor-panel shape-manager-panel">
+      <div class="editor-head">
+        <div>
+          <h2 id="shapeManagerTitle">形状管理</h2>
+          <p>点形状卡片进入编辑器修改；系统预设不能直接修改，先“复制一份”就能自由改。</p>
+        </div>
+        <button class="icon-button" id="closeShapeManagerButton" type="button" aria-label="关闭形状管理">×</button>
+      </div>
+      <div class="shape-manager-list" id="shapeManagerList"></div>
+    </div>
+  </div>
+
   <div class="modal" id="editorModal" role="dialog" aria-modal="true" aria-labelledby="editorTitle">
     <div class="editor-panel">
       <div class="editor-head">
         <div>
-          <h2 id="editorTitle">绘制自定义形状</h2>
-          <p>点击或拖拽点亮格子，右键擦除。保存后会自动裁剪外围空白。</p>
+          <h2 id="editorTitle">新建形状</h2>
+          <p id="editorSubtitle">点击或拖拽点亮格子，右键擦除。保存后会自动裁剪外围空白。</p>
         </div>
         <button class="icon-button" id="closeEditorButton" type="button" aria-label="关闭编辑器">×</button>
       </div>
@@ -153,8 +176,31 @@
     </div>
   </div>
 
-  <div class="toast" id="toast" role="status" aria-live="polite"></div>
-  <script src="js/platform.js"></script>
+  <div class="modal" id="renameModal" role="dialog" aria-modal="true" aria-labelledby="renameTitle">
+    <div class="settings-panel rename-panel">
+      <div class="editor-head">
+        <div>
+          <h2 id="renameTitle">重命名形状</h2>
+          <p>名称最多 16 个字符，保存后会立即生效并写入本地存储。</p>
+        </div>
+        <button class="icon-button" id="closeRenameButton" type="button" aria-label="关闭重命名">×</button>
+      </div>
+      <label class="rename-field">
+        <span>形状名称</span>
+        <input id="renameInput" type="text" maxlength="16" autocomplete="off" spellcheck="false" aria-describedby="renameError">
+      </label>
+      <p class="rename-error" id="renameError" role="alert"></p>
+      <div class="editor-actions">
+        <span></span>
+        <div class="right-actions">
+          <button id="cancelRenameButton" type="button">取消</button>
+          <button id="saveRenameButton" class="toggle-button is-active" type="button">保存名称</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>  <script src="js/platform.js"></script>
   <script src="js/script.js"></script>
 </body>
 </html>

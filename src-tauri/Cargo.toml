@@ -1,6 +1,6 @@
 [package]
 name = "conway-life"
-version = "1.3.0"
+version = "1.4.0"
 description = "离线康威生命游戏的 Tauri 桌面壳"
 authors = ["huajitongxue"]
 license = "MIT"

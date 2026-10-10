@@ -9,6 +9,14 @@
   const STORAGE_KEY = 'conway-life-custom-presets-v1';
   const MUTATION_STORAGE_KEY = 'conway-life-mutation-settings-v1';
   const RANDOM_DENSITY = 0.22;
+  // 预设交换文件的标识、版本与导入上限。
+  const PRESET_FILE_TYPE = 'conway-life-presets';
+  const PRESET_FILE_VERSION = 1;
+  const MAX_IMPORT_PRESETS = 500;
+  const MAX_IMPORT_BYTES = 2 * 1024 * 1024;
+  const MAX_PRESET_LABEL = 16;
+  const DEFAULT_LIBRARY_HELP = '拖拽卡片到场地放置，点击卡片不会改变地图。';
+  const SELECT_LIBRARY_HELP = '勾选要导出的形状，再点“导出所选”。';
 
   const gameCanvas = document.getElementById('gameCanvas');
   const gameStage = gameCanvas.parentElement;
@@ -42,8 +50,12 @@
     drawing: null,
     editorDrawing: null,
     editorGrid: new Uint8Array(EDITOR_COLS * EDITOR_ROWS),
+    editorPresetId: null,
     customPresets: [],
     presetTransforms: Object.create(null),
+    presetSelectionMode: false,
+    selectedPresetKeys: new Set(),
+    renamingPresetId: null,
     presetDrag: null,
     preview: null,
     toastTimer: null
@@ -62,8 +74,13 @@
     boundaryButton: document.getElementById('boundaryButton'),
     gridButton: document.getElementById('gridButton'),
     mutationButton: document.getElementById('mutationButton'),
-    openEditorButton: document.getElementById('openEditorButton'),
+    openShapeManagerButton: document.getElementById('openShapeManagerButton'),
+    shapeManagerModal: document.getElementById('shapeManagerModal'),
+    closeShapeManagerButton: document.getElementById('closeShapeManagerButton'),
+    shapeManagerList: document.getElementById('shapeManagerList'),
     editorModal: document.getElementById('editorModal'),
+    editorTitle: document.getElementById('editorTitle'),
+    editorSubtitle: document.getElementById('editorSubtitle'),
     closeEditorButton: document.getElementById('closeEditorButton'),
     cancelEditorButton: document.getElementById('cancelEditorButton'),
     clearEditorButton: document.getElementById('clearEditorButton'),
@@ -82,6 +99,21 @@
     mutationRatioLeftButton: document.getElementById('mutationRatioLeftButton'),
     mutationRatioRightButton: document.getElementById('mutationRatioRightButton'),
     presetLibrary: document.getElementById('presetLibrary'),
+    libraryHelp: document.getElementById('libraryHelp'),
+    exportPresetsButton: document.getElementById('exportPresetsButton'),
+    importPresetsButton: document.getElementById('importPresetsButton'),
+    importPresetsInput: document.getElementById('importPresetsInput'),
+    presetIoRow: document.getElementById('presetIoRow'),
+    presetSelectRow: document.getElementById('presetSelectRow'),
+    selectAllPresetsButton: document.getElementById('selectAllPresetsButton'),
+    exportSelectedButton: document.getElementById('exportSelectedButton'),
+    cancelSelectButton: document.getElementById('cancelSelectButton'),
+    renameModal: document.getElementById('renameModal'),
+    closeRenameButton: document.getElementById('closeRenameButton'),
+    cancelRenameButton: document.getElementById('cancelRenameButton'),
+    saveRenameButton: document.getElementById('saveRenameButton'),
+    renameInput: document.getElementById('renameInput'),
+    renameError: document.getElementById('renameError'),
     toast: document.getElementById('toast')
   };
 
@@ -168,7 +200,12 @@
       button.addEventListener('click', () => setSpeed(state.speed + Number(button.dataset.speedDelta)));
     });
 
-    els.openEditorButton.addEventListener('click', openEditor);
+    els.openShapeManagerButton.addEventListener('click', openShapeManager);
+    els.closeShapeManagerButton.addEventListener('click', closeShapeManager);
+    els.shapeManagerModal.addEventListener('click', (event) => {
+      if (event.target === els.shapeManagerModal) closeShapeManager();
+    });
+
     els.closeEditorButton.addEventListener('click', closeEditor);
     els.cancelEditorButton.addEventListener('click', closeEditor);
     els.editorModal.addEventListener('click', (event) => {
@@ -176,6 +213,31 @@
     });
     els.clearEditorButton.addEventListener('click', clearEditor);
     els.saveEditorButton.addEventListener('click', saveEditorPreset);
+
+    els.exportPresetsButton.addEventListener('click', enterPresetSelection);
+    els.importPresetsButton.addEventListener('click', () => els.importPresetsInput.click());
+    els.importPresetsInput.addEventListener('change', () => {
+      const file = els.importPresetsInput.files?.[0] || null;
+      // 先清空，保证连续选择同一个文件时也会再次触发 change。
+      els.importPresetsInput.value = '';
+      importPresetsFromFile(file);
+    });
+    els.selectAllPresetsButton.addEventListener('click', toggleSelectAllPresets);
+    els.exportSelectedButton.addEventListener('click', exportSelectedPresets);
+    els.cancelSelectButton.addEventListener('click', () => exitPresetSelection(true));
+
+    els.closeRenameButton.addEventListener('click', closeRenameModal);
+    els.cancelRenameButton.addEventListener('click', closeRenameModal);
+    els.saveRenameButton.addEventListener('click', saveRenamePreset);
+    els.renameModal.addEventListener('click', (event) => {
+      if (event.target === els.renameModal) closeRenameModal();
+    });
+    els.renameInput.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        saveRenamePreset();
+      }
+    });
 
     els.closeMutationButton.addEventListener('click', cancelMutationSettings);
     els.cancelMutationButton.addEventListener('click', cancelMutationSettings);
@@ -762,30 +824,80 @@
 
       const footer = document.createElement('div');
       footer.className = 'preset-card-footer';
-      const deleteControl = document.createElement('span');
-      deleteControl.className = entry.type === 'system' ? 'preset-system-label' : 'delete-preset';
-      deleteControl.textContent = entry.type === 'system' ? '系统预设' : '删除';
-      if (entry.type === 'custom') {
-        deleteControl.setAttribute('role', 'button');
-        deleteControl.setAttribute('tabindex', '0');
-        deleteControl.setAttribute('aria-label', `删除${entry.label}`);
-        deleteControl.addEventListener('pointerdown', (event) => event.stopPropagation());
-        deleteControl.addEventListener('click', (event) => {
-          event.stopPropagation();
-          deletePreset(entry.id);
-        });
-        deleteControl.addEventListener('keydown', (event) => {
-          if (event.key === 'Enter' || event.key === ' ') {
-            event.preventDefault();
-            deletePreset(entry.id);
-          }
-        });
+      if (entry.type === 'system') {
+        const systemLabel = document.createElement('span');
+        systemLabel.className = 'preset-system-label';
+        systemLabel.textContent = '系统预设';
+        footer.append(systemLabel);
+      } else {
+        footer.append(
+          makePresetTextButton('rename-preset', '改名', `重命名${entry.label}`, () => openRenameModal(entry.id)),
+          makePresetTextButton('delete-preset', '删除', `删除${entry.label}`, () => deletePreset(entry.id))
+        );
       }
-      footer.append(deleteControl);
 
-      card.append(cardTop, thumb, transformControls, footer);
-      bindPresetPointer(card, entry);
+      if (state.presetSelectionMode) {
+        const selected = state.selectedPresetKeys.has(entry.key);
+        card.classList.add('is-selecting');
+        card.classList.toggle('is-selected', selected);
+        card.setAttribute('role', 'checkbox');
+        card.setAttribute('tabindex', '0');
+        card.setAttribute('aria-checked', selected ? 'true' : 'false');
+        card.setAttribute('aria-label', `选择${entry.label}`);
+
+        const check = document.createElement('span');
+        check.className = 'preset-check';
+        check.setAttribute('aria-hidden', 'true');
+        check.textContent = selected ? '✓' : '';
+
+        card.append(cardTop, thumb, check, footer);
+        bindPresetSelection(card, entry, check);
+      } else {
+        card.append(cardTop, thumb, transformControls, footer);
+        bindPresetPointer(card, entry);
+      }
       els.presetLibrary.appendChild(card);
+    });
+  }
+
+  function makePresetTextButton(className, text, ariaLabel, onClick) {
+    const control = document.createElement('span');
+    control.className = className;
+    control.textContent = text;
+    control.setAttribute('role', 'button');
+    control.setAttribute('tabindex', '0');
+    control.setAttribute('aria-label', ariaLabel);
+    control.addEventListener('pointerdown', (event) => event.stopPropagation());
+    control.addEventListener('click', (event) => {
+      event.stopPropagation();
+      onClick();
+    });
+    control.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        event.stopPropagation();
+        onClick();
+      }
+    });
+    return control;
+  }
+
+  function bindPresetSelection(card, entry, check) {
+    const toggle = () => {
+      if (state.selectedPresetKeys.has(entry.key)) state.selectedPresetKeys.delete(entry.key);
+      else state.selectedPresetKeys.add(entry.key);
+      const selected = state.selectedPresetKeys.has(entry.key);
+      card.classList.toggle('is-selected', selected);
+      card.setAttribute('aria-checked', selected ? 'true' : 'false');
+      check.textContent = selected ? '✓' : '';
+      updateSelectControls();
+    };
+    card.addEventListener('click', toggle);
+    card.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        toggle();
+      }
     });
   }
 
@@ -872,9 +984,402 @@
     return nextId;
   }
 
+  // ===== 重命名自定义预设 =====
+  function openRenameModal(id) {
+    const preset = state.customPresets.find((item) => item.id === id);
+    if (!preset) return;
+
+    state.renamingPresetId = id;
+    els.renameInput.value = preset.label;
+    setRenameError('');
+    els.renameModal.classList.add('is-open');
+    els.renameInput.focus();
+    els.renameInput.select?.();
+  }
+
+  function closeRenameModal() {
+    if (!els.renameModal.classList.contains('is-open')) return;
+    els.renameModal.classList.remove('is-open');
+    state.renamingPresetId = null;
+    setRenameError('');
+  }
+
+  function setRenameError(message) {
+    els.renameError.textContent = message;
+  }
+
+  function saveRenamePreset() {
+    const preset = state.customPresets.find((item) => item.id === state.renamingPresetId);
+    if (!preset) {
+      closeRenameModal();
+      return;
+    }
+
+    const name = els.renameInput.value.trim().slice(0, MAX_PRESET_LABEL);
+    if (!name) {
+      setRenameError('名称不能为空');
+      return;
+    }
+    if (state.customPresets.some((item) => item.id !== preset.id && item.label === name)) {
+      setRenameError('已经有同名的形状，请换一个名称');
+      return;
+    }
+    if (name === preset.label) {
+      closeRenameModal();
+      return;
+    }
+
+    preset.label = name;
+    persistCustomPresets();
+    renderPresetLibrary();
+    closeRenameModal();
+    showToast(`已改名为${name}`);
+  }
+
+  // ===== 预设导出与导入 =====
+  function enterPresetSelection() {
+    const entries = getPresetEntries();
+    if (!entries.length) {
+      showToast('预设库是空的，没有可导出的形状');
+      return;
+    }
+    state.presetSelectionMode = true;
+    state.selectedPresetKeys.clear();
+    els.presetIoRow.hidden = true;
+    els.presetSelectRow.hidden = false;
+    els.libraryHelp.textContent = SELECT_LIBRARY_HELP;
+    renderPresetLibrary();
+    updateSelectControls();
+    showToast('勾选要导出的形状，再点“导出所选”');
+  }
+
+  function exitPresetSelection(showMessage) {
+    if (!state.presetSelectionMode) return;
+    state.presetSelectionMode = false;
+    state.selectedPresetKeys.clear();
+    els.presetIoRow.hidden = false;
+    els.presetSelectRow.hidden = true;
+    els.libraryHelp.textContent = DEFAULT_LIBRARY_HELP;
+    renderPresetLibrary();
+    if (showMessage) showToast('已取消导出');
+  }
+
+  function updateSelectControls() {
+    const total = getPresetEntries().length;
+    const count = state.selectedPresetKeys.size;
+    els.exportSelectedButton.textContent = count ? `导出所选（${count}）` : '导出所选';
+    els.selectAllPresetsButton.textContent = count && count === total ? '全不选' : '全选';
+  }
+
+  function toggleSelectAllPresets() {
+    const entries = getPresetEntries();
+    const allSelected = entries.length > 0 && state.selectedPresetKeys.size === entries.length;
+    state.selectedPresetKeys.clear();
+    if (!allSelected) entries.forEach((entry) => state.selectedPresetKeys.add(entry.key));
+    renderPresetLibrary();
+    updateSelectControls();
+  }
+
+  function exportSelectedPresets() {
+    const entries = getPresetEntries().filter((entry) => state.selectedPresetKeys.has(entry.key));
+    if (!entries.length) {
+      showToast('请先勾选要导出的形状');
+      return;
+    }
+    if (!writePresetFile(entries)) return;
+    exitPresetSelection(false);
+    showToast(`已导出 ${entries.length} 个形状`);
+  }
+
+  function writePresetFile(entries) {
+    if (typeof Blob !== 'function' || typeof URL.createObjectURL !== 'function') {
+      showToast('当前环境不支持导出文件');
+      return false;
+    }
+
+    const payload = {
+      type: PRESET_FILE_TYPE,
+      version: PRESET_FILE_VERSION,
+      exportedAt: new Date().toISOString(),
+      presets: entries.map((entry) => ({
+        label: entry.label,
+        width: entry.width,
+        height: entry.height,
+        cells: entry.cells.map(([x, y]) => [x, y])
+      }))
+    };
+
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `conway-life-presets-${dateStamp(new Date())}.json`;
+    link.style.display = 'none';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 5000);
+    return true;
+  }
+
+  function dateStamp(date) {
+    const pad = (value) => String(value).padStart(2, '0');
+    return `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}`;
+  }
+
+  function importPresetsFromFile(file) {
+    if (!file) return;
+    if (file.size > MAX_IMPORT_BYTES) {
+      showToast('文件过大，可能不是预设文件');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onerror = () => showToast('无法读取所选文件');
+    reader.onload = () => {
+      try {
+        const result = mergeImportedPresets(String(reader.result));
+        renderPresetLibrary();
+        els.presetLibrary.scrollTop = els.presetLibrary.scrollHeight;
+        showToast(result.skipped
+          ? `已导入 ${result.count} 个预设，跳过 ${result.skipped} 个无效项`
+          : `已导入 ${result.count} 个预设`);
+      } catch (error) {
+        showToast(error && error.message ? error.message : '导入失败');
+      }
+    };
+    reader.readAsText(file);
+  }
+
+  function parsePresetFile(text) {
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch (error) {
+      throw new Error('文件不是有效的 JSON');
+    }
+
+    // 兼容导出文件对象和纯预设数组两种写法。
+    const list = Array.isArray(data)
+      ? data
+      : (data && Array.isArray(data.presets) ? data.presets : null);
+    if (!list) throw new Error('文件里没有预设数据');
+    if (!list.length) throw new Error('文件里没有预设');
+    if (list.length > MAX_IMPORT_PRESETS) throw new Error(`一次最多导入 ${MAX_IMPORT_PRESETS} 个预设`);
+    return list;
+  }
+
+  function normalizeImportedPreset(entry) {
+    if (!entry || typeof entry !== 'object') return null;
+    if (!Array.isArray(entry.cells) || !entry.cells.length) return null;
+
+    const unique = new Map();
+    for (const cell of entry.cells) {
+      if (!Array.isArray(cell) || cell.length < 2) return null;
+      const x = Number(cell[0]);
+      const y = Number(cell[1]);
+      if (!Number.isInteger(x) || !Number.isInteger(y) || x < 0 || y < 0) return null;
+      unique.set(`${x},${y}`, [x, y]);
+    }
+
+    // 与编辑器保存一致：按活细胞范围裁剪外围空白，再据此确定宽高。
+    const cells = [...unique.values()];
+    const minX = Math.min(...cells.map(([x]) => x));
+    const minY = Math.min(...cells.map(([, y]) => y));
+    const normalized = cells.map(([x, y]) => [x - minX, y - minY]);
+    const width = Math.max(...normalized.map(([x]) => x)) + 1;
+    const height = Math.max(...normalized.map(([, y]) => y)) + 1;
+    if (width > COLS || height > ROWS) return null;
+
+    normalized.sort((a, b) => (a[1] - b[1]) || (a[0] - b[0]));
+    return { width, height, cells: normalized };
+  }
+
+  function normalizeImportedLabel(value, fallbackId) {
+    const text = typeof value === 'string' ? value.trim().slice(0, MAX_PRESET_LABEL) : '';
+    return text || `预设${fallbackId}`;
+  }
+
+  function mergeImportedPresets(text) {
+    const list = parsePresetFile(text);
+    const used = new Set(state.customPresets.map((preset) => preset.id));
+    const accepted = [];
+    let skipped = 0;
+
+    list.forEach((entry) => {
+      const pattern = normalizeImportedPreset(entry);
+      if (!pattern) {
+        skipped += 1;
+        return;
+      }
+      // 编号仍取当前最小可用值；名称沿用文件里的名字，缺失时才回退成“预设N”。
+      let nextId = 1;
+      while (used.has(nextId)) nextId += 1;
+      used.add(nextId);
+      accepted.push({
+        id: nextId,
+        label: normalizeImportedLabel(entry.label, nextId),
+        width: pattern.width,
+        height: pattern.height,
+        cells: pattern.cells
+      });
+    });
+
+    if (!accepted.length) throw new Error('文件里没有可导入的预设');
+
+    state.customPresets.push(...accepted);
+    state.customPresets.sort((a, b) => a.id - b.id);
+    persistCustomPresets();
+    return { count: accepted.length, skipped };
+  }
+
+  // ===== 形状管理弹窗 =====
+  function openShapeManager() {
+    if (els.shapeManagerModal.classList.contains('is-open')) return;
+    renderShapeManager();
+    els.shapeManagerModal.classList.add('is-open');
+    els.closeShapeManagerButton.focus();
+  }
+
+  function closeShapeManager() {
+    if (!els.shapeManagerModal.classList.contains('is-open')) return;
+    els.shapeManagerModal.classList.remove('is-open');
+    els.openShapeManagerButton.focus();
+  }
+
+  function renderShapeManager() {
+    els.shapeManagerList.replaceChildren();
+
+    const createCard = document.createElement('button');
+    createCard.type = 'button';
+    createCard.className = 'shape-manager-card is-new';
+    createCard.textContent = '＋ 新建空白形状';
+    createCard.addEventListener('click', openEditor);
+    els.shapeManagerList.appendChild(createCard);
+
+    getPresetEntries().forEach((entry) => {
+      const card = document.createElement('article');
+      card.className = 'shape-manager-card';
+      card.setAttribute('role', 'button');
+      card.setAttribute('tabindex', '0');
+      card.setAttribute('aria-label', entry.type === 'system'
+        ? `${entry.label}，系统预设，不能直接修改`
+        : `修改${entry.label}`);
+
+      const thumb = document.createElement('canvas');
+      thumb.className = 'shape-manager-thumb';
+      thumb.width = 240;
+      thumb.height = 120;
+      thumb.setAttribute('aria-hidden', 'true');
+      renderPatternThumb(thumb, entry);
+
+      const top = document.createElement('div');
+      top.className = 'shape-manager-top';
+      const name = document.createElement('span');
+      name.className = 'shape-manager-name';
+      name.textContent = entry.label;
+      name.title = entry.label;
+      const kind = document.createElement('span');
+      kind.className = 'shape-manager-kind';
+      kind.textContent = entry.type === 'system' ? '系统' : '自定义';
+      top.append(name, kind);
+
+      const copy = document.createElement('button');
+      copy.type = 'button';
+      copy.className = 'shape-manager-copy';
+      copy.textContent = '复制一份';
+      copy.setAttribute('aria-label', `复制一份${entry.label}`);
+      copy.addEventListener('click', (event) => {
+        event.stopPropagation();
+        duplicatePreset(entry);
+      });
+
+      card.append(thumb, top, copy);
+
+      const activate = () => {
+        if (entry.type === 'system') {
+          showToast('系统预设不能直接修改，先“复制一份”再改');
+          return;
+        }
+        openEditorForPreset(entry.id);
+      };
+      card.addEventListener('click', activate);
+      card.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          activate();
+        }
+      });
+
+      els.shapeManagerList.appendChild(card);
+    });
+  }
+
+  function duplicatePreset(entry) {
+    const nextId = getNextPresetId();
+    const pattern = {
+      id: nextId,
+      label: makeCopyLabel(entry.label),
+      width: entry.width,
+      height: entry.height,
+      cells: entry.cells.map(([x, y]) => [x, y])
+    };
+
+    state.customPresets.push(pattern);
+    state.customPresets.sort((a, b) => a.id - b.id);
+    persistCustomPresets();
+    renderPresetLibrary();
+    renderShapeManager();
+    showToast(`已复制为${pattern.label}`);
+  }
+
+  function makeCopyLabel(label) {
+    const used = new Set(state.customPresets.map((preset) => preset.label));
+    const build = (suffix) => {
+      const head = String(label).slice(0, Math.max(1, MAX_PRESET_LABEL - suffix.length));
+      return `${head}${suffix}`;
+    };
+
+    const first = build(' 副本');
+    if (!used.has(first)) return first;
+    for (let index = 2; index <= 99; index += 1) {
+      const candidate = build(` 副本${index}`);
+      if (!used.has(candidate)) return candidate;
+    }
+    return build(' 副本99');
+  }
+
   // ===== 自定义编辑器 =====
   function openEditor() {
+    // 新建空白形状
+    state.editorPresetId = null;
     state.editorGrid.fill(0);
+    els.editorTitle.textContent = '新建形状';
+    els.editorSubtitle.textContent = '点击或拖拽点亮格子，右键擦除。保存后会自动裁剪外围空白。';
+    els.saveEditorButton.textContent = '保存为新预设';
+    showEditor();
+  }
+
+  function openEditorForPreset(id) {
+    const preset = state.customPresets.find((item) => item.id === id);
+    if (!preset) return;
+
+    state.editorPresetId = id;
+    state.editorGrid.fill(0);
+    // 形状坐标相对自己的左上角，放进编辑区左上角，方便继续增删格子。
+    preset.cells.forEach(([x, y]) => {
+      if (x >= 0 && x < EDITOR_COLS && y >= 0 && y < EDITOR_ROWS) {
+        state.editorGrid[y * EDITOR_COLS + x] = 1;
+      }
+    });
+    els.editorTitle.textContent = `修改「${preset.label}」`;
+    els.editorSubtitle.textContent = '在上面继续增删格子。保存后覆盖这个形状，名称和编号保持不变。';
+    els.saveEditorButton.textContent = '保存修改';
+    showEditor();
+  }
+
+  function showEditor() {
+    closeShapeManager();
     drawEditor();
     els.editorModal.classList.add('is-open');
     els.closeEditorButton.focus();
@@ -886,6 +1391,7 @@
 
   function closeEditor() {
     els.editorModal.classList.remove('is-open');
+    state.editorPresetId = null;
   }
 
   function clearEditor() {
@@ -972,13 +1478,32 @@
     const maxX = Math.max(...cells.map(([x]) => x));
     const minY = Math.min(...cells.map(([, y]) => y));
     const maxY = Math.max(...cells.map(([, y]) => y));
+    const shape = {
+      width: maxX - minX + 1,
+      height: maxY - minY + 1,
+      cells: cells.map(([x, y]) => [x - minX, y - minY])
+    };
+
+    // 从形状管理进来修改已有形状：覆盖原预设，编号和名称都不变。
+    const editing = state.customPresets.find((item) => item.id === state.editorPresetId);
+    if (editing) {
+      editing.width = shape.width;
+      editing.height = shape.height;
+      editing.cells = shape.cells;
+      persistCustomPresets();
+      renderPresetLibrary();
+      closeEditor();
+      showToast(`已保存「${editing.label}」的修改`);
+      return;
+    }
+
     const nextId = getNextPresetId();
     const pattern = {
       id: nextId,
       label: `预设${nextId}`,
-      width: maxX - minX + 1,
-      height: maxY - minY + 1,
-      cells: cells.map(([x, y]) => [x - minX, y - minY])
+      width: shape.width,
+      height: shape.height,
+      cells: shape.cells
     };
 
     state.customPresets.push(pattern);
@@ -1021,14 +1546,28 @@
         cancelMutationSettings();
         return;
       }
+      if (els.renameModal.classList.contains('is-open')) {
+        closeRenameModal();
+        return;
+      }
+      if (els.shapeManagerModal.classList.contains('is-open')) {
+        closeShapeManager();
+        return;
+      }
       if (els.editorModal.classList.contains('is-open')) {
         closeEditor();
         return;
       }
+      if (state.presetSelectionMode) {
+        exitPresetSelection(true);
+        return;
+      }
     }
 
-    // 设置弹窗打开期间只允许编辑参数，游戏快捷键不会改变场地或播放状态。
-    if (els.mutationModal.classList.contains('is-open')) return;
+    // 弹窗打开期间只允许编辑参数，游戏快捷键不会改变场地或播放状态。
+    if (els.mutationModal.classList.contains('is-open')
+      || els.renameModal.classList.contains('is-open')
+      || els.shapeManagerModal.classList.contains('is-open')) return;
 
     const tag = event.target?.tagName;
     const isEditable = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
