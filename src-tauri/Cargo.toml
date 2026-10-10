@@ -1,0 +1,21 @@
+[package]
+name = "conway-life"
+version = "1.1.0"
+description = "离线康威生命游戏的 Tauri 桌面壳"
+authors = ["huajitongxue"]
+license = "MIT"
+repository = "https://github.com/huajitongxue/conway-life"
+edition = "2024"
+rust-version = "1.90"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+name = "conway_life_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2.7.1", features = [] }
+
+[dependencies]
+tauri = { version = "2.12.1", features = [] }

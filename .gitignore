@@ -19,6 +19,7 @@
 # 本地依赖、系统文件
 node_modules/
 /dist/
+/src-tauri/target/
 .DS_Store
 Thumbs.db
 Desktop.ini

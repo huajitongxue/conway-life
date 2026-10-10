@@ -17,9 +17,10 @@ protocol.registerSchemesAsPrivileged([
 
 function registerLocalPages() {
   const pages = new Map([
-    ['/index.html', 'index.html'],
-    ['/css/style.css', 'css/style.css'],
-    ['/js/script.js', 'js/script.js']
+    ['/index.html', 'web/index.html'],
+    ['/css/style.css', 'web/css/style.css'],
+    ['/js/platform.js', 'web/js/platform.js'],
+    ['/js/script.js', 'web/js/script.js']
   ]);
 
   protocol.handle(APP_SCHEME, async (request) => {

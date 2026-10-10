@@ -783,6 +783,9 @@
         } else if (key === 'c') {
           event.preventDefault();
           clearBoard(true);
+        } else if (event.key === 'F11') {
+          event.preventDefault();
+          window.CONWAY_PLATFORM?.toggleFullscreen().catch(() => {});
         } else if (event.key === 'Escape' && els.editorModal.classList.contains('is-open')) {
           closeEditor();
         }

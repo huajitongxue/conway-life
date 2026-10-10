@@ -14,7 +14,7 @@
 git clone https://github.com/huajitongxue/conway-life.git
 ```
 
-双击目录中的 `index.html` 即可运行。请保持 `index.html`、`css/` 和 `js/` 的相对位置。
+双击目录中的 `index.html` 即可运行；它会打开 `web/index.html`。也可以直接打开 `web/index.html`。请保持 `web/` 内的 HTML、CSS 和 JavaScript 相对位置不变。
 
 网页无需安装依赖、构建或启动服务器，不加载外部库、字体及 CDN，支持离线使用。建议使用支持 Canvas、Pointer Events 和 ResizeObserver 的现代浏览器。
 
@@ -25,6 +25,25 @@ git clone https://github.com/huajitongxue/conway-life.git
 打包产物为 `dist/Conway-Life-1.1.0-Windows-x64.exe`，适用于 Windows 10 / 11 的 x64 系统。双击即可运行，无需安装 Node.js、浏览器或其他依赖。免安装程序启动时会解压到临时目录，首次打开可能稍慢。
 
 自定义预设保存在 `%APPDATA%\conway-life`，移动或替换 `.exe` 不会清除预设。网页版和桌面版的存储相互独立，已有浏览器预设不会自动迁移。
+
+### Tauri Windows 开发版
+
+项目同时接入了 Tauri 2。当前只提供本地开发运行，不制作安装包，也不会上传 Tauri 版本到 GitHub Release。Tauri 使用系统 WebView2，后续制作安装版时会采用安装时下载 WebView2 的方式，因此安装时可能需要联网；项目不提供离线 WebView2 安装包，以保持安装文件较小。
+
+开始 Tauri 开发前，需要安装 Rust stable-msvc、Microsoft C++ Build Tools 和 WebView2。运行开发版：
+
+```bash
+npm ci
+npm run tauri:dev
+```
+
+检查 Rust 项目：
+
+```bash
+npm run tauri:check
+```
+
+Tauri、Electron 和浏览器共用 `web/` 目录中的游戏页面。不同运行方式的自定义预设分别保存在各自的 WebView 存储中，不会自动互相迁移。
 
 ### 桌面版开发与打包
 
@@ -62,7 +81,7 @@ npm run dist
 
 ### 发布约定
 
-后续打包好的桌面程序统一作为 GitHub Release 附件发布，代码仓库保留源码和构建配置，不提交 `dist/`、`node_modules/` 或本地测试文件。
+后续打包好的桌面程序统一作为 GitHub Release 附件发布：Electron 免安装版和 Tauri 安装版会放在同一个 Release 中。当前 Tauri 只做开发版，等安装配置完成后再加入 Release。代码仓库保留源码和构建配置，不提交 `dist/`、`node_modules/` 或本地测试文件。
 
 每次发布保持 `VERSION`、`package.json`、`package-lock.json` 和 README 的版本号一致，重新打包后提交源码并推送对应的 `vX.Y.Z` 标签。Release 页面附上简短的更新和使用说明，说明保存在 `docs/releases/`，并上传该版本的 `.exe`。
 
@@ -123,27 +142,34 @@ npm run dist
 
 ```text
 conway-life/
-├── index.html          # 页面结构与入口
-├── css/
-│   └── style.css       # 深色主题、布局和响应式样式
-├── js/
-│   └── script.js       # 初始化、游戏规则、渲染、事件和预设管理
+├── index.html          # 网页兼容跳转入口
+├── web/
+│   ├── index.html      # 共用页面结构与入口
+│   ├── css/
+│   │   └── style.css   # 深色主题、布局和响应式样式
+│   └── js/
+│       ├── platform.js # 浏览器 / Tauri 平台适配
+│       └── script.js   # 初始化、游戏规则、渲染、事件和预设管理
 ├── electron/
 │   └── main.cjs        # 桌面入口、窗口、全屏快捷键与本地页面协议
+├── src-tauri/
+│   ├── src/             # Tauri Rust 入口
+│   ├── capabilities/   # 最小窗口权限
+│   └── tauri.conf.json  # Tauri 开发配置
 ├── assets/
 │   └── icon.ico        # 程序图标
 ├── scripts/
 │   └── create-icon.cjs # 图标生成脚本，npm run icon 可重新生成
 ├── docs/
 │   └── releases/       # 各版本的 Release 说明
-├── package.json        # Electron 依赖与 Windows 打包配置
+├── package.json        # Electron / Tauri 依赖与桌面脚本
 ├── package-lock.json   # 固定依赖版本
 ├── README.md           # 使用说明
 ├── VERSION             # 当前版本号
 └── LICENSE             # MIT 开源协议
 ```
 
-网页版无需打包，修改 HTML、CSS 或 JavaScript 后刷新页面即可；桌面版发布前需重新执行 `npm run dist`。`script.js` 按初始化、逻辑更新、画布绘制、预设管理、编辑器和 UI 事件划分。
+网页版无需打包，修改 `web/` 中的 HTML、CSS 或 JavaScript 后刷新页面即可；Electron 桌面版发布前需重新执行 `npm run dist`，Tauri 安装版暂未启用。`script.js` 按初始化、逻辑更新、画布绘制、预设管理、编辑器和 UI 事件划分。
 
 ## 开源协议
 

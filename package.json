@@ -15,11 +15,14 @@
   },
   "scripts": {
     "start": "electron .",
+    "tauri:dev": "tauri dev",
+    "tauri:check": "cargo check --manifest-path src-tauri/Cargo.toml",
     "icon": "node scripts/create-icon.cjs",
     "pack": "electron-builder --win --x64 --dir",
     "dist": "electron-builder --win portable --x64 --publish never"
   },
   "devDependencies": {
+    "@tauri-apps/cli": "^2.12.1",
     "electron": "44.7.0",
     "electron-builder": "26.15.3"
   },
@@ -32,9 +35,7 @@
       "buildResources": "build"
     },
     "files": [
-      "index.html",
-      "css/**/*",
-      "js/**/*",
+      "web/**/*",
       "electron/**/*",
       "assets/icon.ico",
       "VERSION",
@@ -45,7 +46,9 @@
       "target": [
         {
           "target": "portable",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
       ]
     },
