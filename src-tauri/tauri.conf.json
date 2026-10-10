@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "康威生命游戏",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "identifier": "io.github.huajitongxue.conwaylife",
   "build": {
     "frontendDist": "../web"
@@ -25,9 +25,24 @@
     }
   },
   "bundle": {
-    "active": false,
+    "active": true,
+    "targets": ["nsis", "msi"],
+    "useLocalToolsDir": true,
     "icon": [
       "icons/icon.ico"
-    ]
+    ],
+    "windows": {
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper",
+        "silent": true
+      },
+      "nsis": {
+        "installMode": "currentUser",
+        "languages": ["SimpChinese"]
+      },
+      "wix": {
+        "language": "zh-CN"
+      }
+    }
   }
 }

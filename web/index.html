@@ -9,46 +9,25 @@
 </head>
 <body>
   <main class="app">
-    <header class="intro">
-      <div>
-        <p class="eyebrow">B3 / S23 · 8 邻域</p>
-        <h1>康威生命游戏</h1>
-        <p>用鼠标绘制细胞，观察简单规则如何生成复杂的生命形态。</p>
-      </div>
-    </header>
-
-    <section class="topbar" aria-label="预设与播放控制">
-      <div class="topbar-side">
-        <button class="system-toggle" id="systemToggle" type="button" aria-expanded="false">系统预设 ▾</button>
-        <div class="dropdown" id="systemMenu" aria-label="系统预设列表">
-          <button type="button" data-preset-key="glider">滑翔机</button>
-          <button type="button" data-preset-key="pulsar">脉冲星</button>
-          <button type="button" data-preset-key="gosper">高斯帕滑翔机枪</button>
-        </div>
-      </div>
-
-      <div class="topbar-center">
-        <button class="play-top" id="topPlayButton" type="button">▶ 播放</button>
-      </div>
-
-      <div class="topbar-side">
-        <button class="custom-toggle" id="openEditorButton" type="button">＋ 自定义形状</button>
-      </div>
-    </section>
-
     <section class="stage-shell" aria-label="生命游戏工作区">
       <div class="stage-column">
         <div class="stage">
           <canvas id="gameCanvas" width="1200" height="800" aria-label="康威生命游戏画布"></canvas>
-          <div class="stage-hint">左键绘制 · 右键擦除 · 拖拽预设到这里</div>
+          <div class="stage-hint">左键绘制 · 右键擦除 · 仅拖拽预设到这里</div>
         </div>
       </div>
 
       <aside class="control-panel" aria-label="游戏控制与预设">
-        <section class="library" aria-label="自定义预设库">
+        <section class="library" aria-label="预设库">
           <div class="library-heading">
-            <h2>我的预设</h2>
-            <span>点击居中放置，长按拖拽到场地</span>
+            <div class="library-title-row">
+              <div>
+                <h2>预设库</h2>
+                <span>系统预设与自定义预设</span>
+              </div>
+              <button class="custom-toggle" id="openEditorButton" type="button">＋ 自定义形状</button>
+            </div>
+            <p class="library-help">拖拽卡片到场地放置，点击卡片不会改变地图。</p>
           </div>
           <div class="preset-library" id="presetLibrary"></div>
         </section>
@@ -82,15 +61,16 @@
         </div>
 
         <div class="actions-row">
-          <div class="action-group">
-            <button id="playButton" type="button">▶ 播放</button>
+          <div class="action-group primary-actions">
+            <button id="playButton" class="play-button" type="button">▶ 播放</button>
             <button id="stepButton" type="button">单步</button>
             <button id="clearButton" class="danger-button" type="button">清空</button>
             <button id="randomButton" type="button">随机</button>
           </div>
-          <div class="action-group">
+          <div class="action-group secondary-actions">
             <button id="boundaryButton" class="toggle-button is-active" type="button">边界：环绕</button>
             <button id="gridButton" class="toggle-button is-active" type="button">网格线：开</button>
+            <button id="mutationButton" class="toggle-button" type="button">细胞突变：关</button>
           </div>
         </div>
 
@@ -116,6 +96,48 @@
         <div class="right-actions">
           <button id="cancelEditorButton" type="button">取消</button>
           <button id="saveEditorButton" class="toggle-button is-active" type="button">保存为新预设</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" id="mutationModal" role="dialog" aria-modal="true" aria-labelledby="mutationTitle">
+    <div class="settings-panel">
+      <div class="editor-head">
+        <div>
+          <h2 id="mutationTitle">细胞突变设置</h2>
+          <p>播放时每秒抽取指定数量的存活细胞，按概率执行死亡或移动突变。</p>
+        </div>
+        <button class="icon-button" id="closeMutationButton" type="button" aria-label="关闭突变设置">×</button>
+      </div>
+      <label class="setting-toggle">
+        <input id="mutationEnabled" type="checkbox">
+        <span>启用细胞突变</span>
+      </label>
+      <div class="settings-grid">
+        <label>
+          <span>每秒抽取数量</span>
+          <input id="mutationCount" type="number" min="1" max="1000" step="1">
+        </label>
+        <label>
+          <span>单个细胞突变概率（%）</span>
+          <input id="mutationProbability" type="number" min="0" max="100" step="1">
+        </label>
+        <label>
+          <span>死亡比例（%）</span>
+          <input id="mutationDeathRatio" type="number" min="0" max="100" step="1">
+        </label>
+        <label>
+          <span>移动比例（%）</span>
+          <input id="mutationMoveRatio" type="number" min="0" max="100" step="1">
+        </label>
+      </div>
+      <p class="settings-note">死亡比例和移动比例会自动归一化为 100%。参数会保存在本地，启用状态每次打开游戏时默认关闭。</p>
+      <div class="editor-actions">
+        <span></span>
+        <div class="right-actions">
+          <button id="cancelMutationButton" type="button">取消</button>
+          <button id="saveMutationButton" class="toggle-button is-active" type="button">保存设置</button>
         </div>
       </div>
     </div>
