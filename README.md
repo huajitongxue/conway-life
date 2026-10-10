@@ -2,6 +2,8 @@
 
 用原生 HTML、CSS 和 JavaScript 实现的康威生命游戏。绘制细胞、拖拽图案，观察简单规则产生的复杂演化。
 
+**在线试玩**：<https://huajitongxue.github.io/conway-life/> —— 直接用浏览器打开即可游玩，无需下载或安装。
+
 当前版本：**v1.3.0**，已发布到 GitHub Release。
 
 已发布的桌面版可在 [GitHub Releases](https://github.com/huajitongxue/conway-life/releases) 下载。Electron `.exe` 为免安装程序；Tauri `setup.exe` 和 `.msi` 是两种安装程序，选择一种即可。
