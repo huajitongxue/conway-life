@@ -1,4 +1,7 @@
 # 本地截图、浏览器日志与临时文件
+/本次改进说明.md
+/任务须知.md
+/改进.txt
 /屏幕截图*.png
 /debug.log
 *.log
@@ -13,6 +16,7 @@
 /.codex/
 /.claude/
 /.gitnexus/
+/.workbuddy/
 /.vscode/
 /.idea/
 

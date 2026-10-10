@@ -2,7 +2,7 @@
 
 用原生 HTML、CSS 和 JavaScript 实现的康威生命游戏。绘制细胞、拖拽图案，观察简单规则产生的复杂演化。
 
-当前版本：**v1.2.0**，已发布到 GitHub Release。
+当前版本：**v1.3.0**，已发布到 GitHub Release。
 
 已发布的桌面版可在 [GitHub Releases](https://github.com/huajitongxue/conway-life/releases) 下载。Electron `.exe` 为免安装程序；Tauri `setup.exe` 和 `.msi` 是两种安装程序，选择一种即可。
 
@@ -22,7 +22,7 @@ git clone https://github.com/huajitongxue/conway-life.git
 
 桌面版使用 Electron，启动后默认最大化，直接显示游戏，没有浏览器的标签页、地址栏和收藏夹栏。按 `F11` 切换全屏，按 `Esc` 退出全屏；其余操作与网页版一致。
 
-打包产物为 `dist/Conway-Life-1.2.0-Windows-x64.exe`，适用于 Windows 10 / 11 的 x64 系统。双击即可运行，无需安装 Node.js、浏览器或其他依赖。免安装程序启动时会解压到临时目录，首次打开可能稍慢。
+打包产物为 `dist/Conway-Life-1.3.0-Windows-x64.exe`，适用于 Windows 10 / 11 的 x64 系统。双击即可运行，无需安装 Node.js、浏览器或其他依赖。免安装程序启动时会解压到临时目录，首次打开可能稍慢。
 
 自定义预设保存在 `%APPDATA%\conway-life`，移动或替换 `.exe` 不会清除预设。网页版和桌面版的存储相互独立，已有浏览器预设不会自动迁移。
 
@@ -30,10 +30,10 @@ git clone https://github.com/huajitongxue/conway-life.git
 
 项目同时提供 Tauri 2 的 Windows x64 安装版，可选择 NSIS `setup.exe` 或 MSI 安装程序，安装界面为简体中文，NSIS 默认仅为当前用户安装。Tauri 使用系统 WebView2；缺少 WebView2 时，安装程序会联网下载并安装运行时，不内置离线 WebView2 安装包。已安装 WebView2 后，游戏本身可以离线运行。
 
-v1.2.0 的产物已作为 [v1.2.0 Release](https://github.com/huajitongxue/conway-life/releases/tag/v1.2.0) 的附件发布，本地产物位于 `dist/`：
+v1.3.0 的产物已作为 [v1.3.0 Release](https://github.com/huajitongxue/conway-life/releases/tag/v1.3.0) 的附件发布，本地产物位于 `dist/`：
 
-- `Conway-Life-1.2.0-Tauri-Windows-x64-setup.exe`
-- `Conway-Life-1.2.0-Tauri-Windows-x64.msi`
+- `Conway-Life-1.3.0-Tauri-Windows-x64-setup.exe`
+- `Conway-Life-1.3.0-Tauri-Windows-x64.msi`
 
 开始 Tauri 开发前，需要安装 Rust stable-msvc、Microsoft C++ Build Tools 和 WebView2。运行开发版：
 
@@ -96,7 +96,7 @@ npm run dist
 
 ### 发布约定
 
-后续打包好的桌面程序统一作为 GitHub Release 附件发布：Electron 免安装版和 Tauri 安装版会放在同一个 Release 中。代码仓库保留源码和构建配置，不提交 `dist/`、`node_modules/` 或本地测试文件。本次 v1.2.0 的源码已提交并推送，三个附件已随 `v1.2.0` 标签发布。
+后续打包好的桌面程序统一作为 GitHub Release 附件发布：Electron 免安装版和 Tauri 安装版会放在同一个 Release 中。代码仓库保留源码和构建配置，不提交 `dist/`、`node_modules/` 或本地测试文件。本次 v1.3.0 的源码已提交并推送，三个附件已随 `v1.3.0` 标签发布。
 
 每次发布保持 `VERSION`、npm 元数据、Rust 元数据、Tauri 配置和 README 的版本号一致，重新打包后提交源码并推送对应的 `vX.Y.Z` 标签。Release 页面附上简短的更新和使用说明，说明保存在 `docs/releases/`，并上传该版本的 Electron `.exe`、Tauri `setup.exe` 和 `.msi`。
 
@@ -112,7 +112,7 @@ npm run dist
 - **40×30** 自定义形状编辑器，支持绘制、擦除和保存时自动裁剪空白。
 - 系统预设与自定义预设合并显示在右侧预设库，卡片提供缩略图、左右翻转和上下翻转。
 - 预设只能拖拽到场地，放置时会追加到现有细胞；系统预设不可删除，自定义预设支持删除。
-- 细胞突变可单独配置：每秒抽取数量、单个细胞突变概率以及死亡／移动比例；参数保存在本地，启用状态每次打开游戏时默认关闭。
+- 细胞突变可单独配置：每秒抽取数量、单个细胞突变概率、死亡／移动比例，以及优先选择稳定细胞；参数保存在本地，启用状态每次打开游戏时默认关闭。
 - 深色主题；桌面端完整地图与控制面板同屏，预设列表独立滚动，窄屏采用上下布局。
 
 ## 操作
@@ -150,6 +150,12 @@ npm run dist
 ### 细胞突变
 
 点击右侧“细胞突变：关”打开独立设置。默认关闭，参数默认为每秒抽取 10 个细胞、单个细胞 10% 概率、死亡和移动各占 50%。打开设置时游戏会暂停，保存或取消后恢复打开前的播放状态。启用后，游戏播放期间每秒从当前存活细胞中抽取指定数量，并让每个被抽取的细胞按概率发生突变：按死亡／移动比例死亡，或向上、下、左、右随机移动一格。移动目标已有细胞或有限边界越界时，该次移动保持原位；环绕边界会从另一侧出现。突变不会增加代数，但会立即更新画面和存活数量。
+
+勾选“优先选择长时间未改变的细胞”后，会优先抽取连续存活代数最多的格子；代数相同时随机选择，不重复抽取。未触发突变时不补抽。默认不勾选，勾选状态会随参数保存在本地，旧设置自动按未勾选处理。
+
+新生、手动绘制和预设新放置的细胞从 1 代开始计数，连续存活每代加 1，死亡归零；覆盖已有活细胞保留记录。移动突变成功后在目标格重新计数，移动失败保留原记录。暂停不增加记录，清空、随机填充或重新打开游戏会重置记录，切换速度和边界不会重置。
+
+死亡／移动比例由同一条滑块控制，总和始终为 100%。左侧为死亡，右侧为移动；“向左加1”增加死亡比例 1 个百分点，“向右加1”增加移动比例 1 个百分点。滑块两端可设置为只死亡或只移动。只有保存后才应用修改；取消、关闭或按 `Esc` 会丢弃本次参数修改。弹窗打开时游戏快捷键不会改变场地或播放状态。
 
 ## 游戏规则
 

@@ -20,6 +20,8 @@
   const state = {
     grid: new Uint8Array(COLS * ROWS),
     nextGrid: new Uint8Array(COLS * ROWS),
+    // 只记录当前会话中每个格子的连续存活代数，暂停不增加。
+    cellAges: new Uint32Array(COLS * ROWS),
     generation: 0,
     population: 0,
     running: false,
@@ -29,6 +31,7 @@
     timerId: null,
     mutationTimerId: null,
     mutationEnabled: false,
+    mutationPreferStable: false,
     mutationCount: 10,
     mutationProbability: 0.1,
     mutationDeathRatio: 0.5,
@@ -70,10 +73,14 @@
     cancelMutationButton: document.getElementById('cancelMutationButton'),
     saveMutationButton: document.getElementById('saveMutationButton'),
     mutationEnabled: document.getElementById('mutationEnabled'),
+    mutationPreferStable: document.getElementById('mutationPreferStable'),
     mutationCount: document.getElementById('mutationCount'),
     mutationProbability: document.getElementById('mutationProbability'),
-    mutationDeathRatio: document.getElementById('mutationDeathRatio'),
-    mutationMoveRatio: document.getElementById('mutationMoveRatio'),
+    mutationRatioRange: document.getElementById('mutationRatioRange'),
+    mutationDeathValue: document.getElementById('mutationDeathValue'),
+    mutationMoveValue: document.getElementById('mutationMoveValue'),
+    mutationRatioLeftButton: document.getElementById('mutationRatioLeftButton'),
+    mutationRatioRightButton: document.getElementById('mutationRatioRightButton'),
     presetLibrary: document.getElementById('presetLibrary'),
     toast: document.getElementById('toast')
   };
@@ -176,6 +183,15 @@
     els.mutationModal.addEventListener('click', (event) => {
       if (event.target === els.mutationModal) cancelMutationSettings();
     });
+    els.mutationRatioRange.addEventListener('input', () => {
+      setMutationRatio(els.mutationRatioRange.value);
+    });
+    els.mutationRatioLeftButton.addEventListener('click', () => {
+      setMutationRatio(Number(els.mutationRatioRange.value) - 1);
+    });
+    els.mutationRatioRightButton.addEventListener('click', () => {
+      setMutationRatio(Number(els.mutationRatioRange.value) + 1);
+    });
 
     bindGameCanvasEvents();
     bindEditorCanvasEvents();
@@ -194,6 +210,7 @@
         const alive = source[index] === 1;
         const nextAlive = alive ? (neighbors === 2 || neighbors === 3) : neighbors === 3;
         target[index] = nextAlive ? 1 : 0;
+        state.cellAges[index] = nextAlive ? (alive ? Math.min(state.cellAges[index] + 1, 0xffffffff) : 1) : 0;
         if (nextAlive) population += 1;
       }
     }
@@ -281,6 +298,7 @@
   function clearBoard(resetGeneration) {
     state.grid.fill(0);
     state.nextGrid.fill(0);
+    state.cellAges.fill(0);
     state.population = 0;
     if (resetGeneration) state.generation = 0;
     state.preview = null;
@@ -292,6 +310,7 @@
     if (state.running) stopRunning();
     for (let i = 0; i < state.grid.length; i += 1) {
       state.grid[i] = Math.random() < RANDOM_DENSITY ? 1 : 0;
+      state.cellAges[i] = state.grid[i];
     }
     state.nextGrid.fill(0);
     state.generation = 0;
@@ -332,6 +351,8 @@
 
   // ===== 细胞突变 =====
   function loadMutationSettings() {
+    state.mutationEnabled = false;
+    state.mutationPreferStable = false;
     try {
       const raw = window.localStorage.getItem(MUTATION_STORAGE_KEY);
       if (!raw) return;
@@ -341,10 +362,11 @@
       const ratios = normalizeRatios(Number(saved.deathRatio), Number(saved.moveRatio));
       state.mutationDeathRatio = ratios.death;
       state.mutationMoveRatio = ratios.move;
+      // 旧设置缺少此字段时保持随机抽取，只有布尔值 true 才启用。
+      state.mutationPreferStable = saved.preferStable === true;
     } catch (error) {
       // 存储损坏时回退到默认值。
     }
-    state.mutationEnabled = false;
   }
 
   function persistMutationSettings() {
@@ -353,7 +375,8 @@
         count: state.mutationCount,
         probability: state.mutationProbability,
         deathRatio: state.mutationDeathRatio,
-        moveRatio: state.mutationMoveRatio
+        moveRatio: state.mutationMoveRatio,
+        preferStable: state.mutationPreferStable
       }));
     } catch (error) {
       showToast('浏览器无法保存突变设置，请检查存储权限');
@@ -366,21 +389,24 @@
   }
 
   function openMutationSettings() {
+    if (els.mutationModal.classList.contains('is-open')) return;
     state.mutationResumeRunning = state.running;
     if (state.running) stopRunning();
     els.mutationEnabled.checked = state.mutationEnabled;
+    els.mutationPreferStable.checked = state.mutationPreferStable;
     els.mutationCount.value = String(state.mutationCount);
     els.mutationProbability.value = String(Math.round(state.mutationProbability * 100));
-    els.mutationDeathRatio.value = String(Math.round(state.mutationDeathRatio * 100));
-    els.mutationMoveRatio.value = String(Math.round(state.mutationMoveRatio * 100));
+    setMutationRatio(Math.round(state.mutationMoveRatio * 100));
     els.mutationModal.classList.add('is-open');
     els.mutationEnabled.focus();
   }
 
   function closeMutationSettings(restoreRunning) {
+    if (!els.mutationModal.classList.contains('is-open')) return;
     els.mutationModal.classList.remove('is-open');
     const shouldResume = restoreRunning && state.mutationResumeRunning;
     state.mutationResumeRunning = false;
+    els.mutationButton.focus();
     if (shouldResume) startRunning();
   }
 
@@ -391,9 +417,10 @@
   function saveMutationSettings() {
     state.mutationCount = clampInt(els.mutationCount.value, 1, 1000, 10);
     state.mutationProbability = clamp(Number(els.mutationProbability.value) / 100, 0, 1, 0.1);
-    const ratios = normalizeRatios(Number(els.mutationDeathRatio.value), Number(els.mutationMoveRatio.value));
-    state.mutationDeathRatio = ratios.death;
-    state.mutationMoveRatio = ratios.move;
+    const movePercent = clampInt(els.mutationRatioRange.value, 0, 100, 50);
+    state.mutationDeathRatio = (100 - movePercent) / 100;
+    state.mutationMoveRatio = movePercent / 100;
+    state.mutationPreferStable = els.mutationPreferStable.checked;
     state.mutationEnabled = els.mutationEnabled.checked;
     persistMutationSettings();
     updateMutationButton();
@@ -405,21 +432,12 @@
   function applyMutations() {
     if (!state.running || !state.mutationEnabled || state.population === 0) return;
 
-    const alive = [];
-    for (let index = 0; index < state.grid.length; index += 1) {
-      if (state.grid[index]) alive.push(index);
-    }
-    for (let i = alive.length - 1; i > 0; i -= 1) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [alive[i], alive[j]] = [alive[j], alive[i]];
-    }
-
-    const sampleCount = Math.min(state.mutationCount, alive.length);
-    for (let i = 0; i < sampleCount; i += 1) {
-      const sourceIndex = alive[i];
+    const candidates = selectMutationCells();
+    for (const sourceIndex of candidates) {
       if (!state.grid[sourceIndex] || Math.random() >= state.mutationProbability) continue;
       if (Math.random() < state.mutationDeathRatio) {
         state.grid[sourceIndex] = 0;
+        state.cellAges[sourceIndex] = 0;
         continue;
       }
 
@@ -440,13 +458,42 @@
       const targetIndex = targetY * COLS + targetX;
       if (state.grid[targetIndex]) continue;
       state.grid[sourceIndex] = 0;
+      state.cellAges[sourceIndex] = 0;
       state.grid[targetIndex] = 1;
+      state.cellAges[targetIndex] = 1;
     }
 
     state.nextGrid.fill(0);
     state.population = countPopulation(state.grid);
     updateStats();
     draw();
+  }
+
+  function selectMutationCells() {
+    const alive = [];
+    for (let index = 0; index < state.grid.length; index += 1) {
+      if (state.grid[index]) alive.push(index);
+    }
+    for (let i = alive.length - 1; i > 0; i -= 1) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [alive[i], alive[j]] = [alive[j], alive[i]];
+    }
+
+    if (state.mutationPreferStable) {
+      // 先洗牌再稳定排序，让相同连续存活代数的格子随机排列。
+      alive.sort((a, b) => state.cellAges[b] - state.cellAges[a]);
+    }
+    return alive.slice(0, Math.min(state.mutationCount, alive.length));
+  }
+
+  function setMutationRatio(value) {
+    // 仅修改弹窗草稿，保存后才应用到游戏。
+    const movePercent = clampInt(value, 0, 100, 50);
+    const deathPercent = 100 - movePercent;
+    els.mutationRatioRange.value = String(movePercent);
+    els.mutationDeathValue.textContent = `${deathPercent}%`;
+    els.mutationMoveValue.textContent = `${movePercent}%`;
+    els.mutationRatioRange.setAttribute('aria-valuetext', `死亡 ${deathPercent}%，移动 ${movePercent}%`);
   }
 
   function normalizeRatios(death, move) {
@@ -497,6 +544,7 @@
     const index = y * COLS + x;
     if (state.grid[index] === value) return;
     state.grid[index] = value;
+    state.cellAges[index] = value ? 1 : 0;
     state.population += value ? 1 : -1;
     state.nextGrid[index] = 0;
     updateStats();
@@ -669,7 +717,9 @@
     if (clearFirst) clearBoard(true);
     const cells = getPlacementCells(pattern, anchorX, anchorY);
     cells.forEach(({ x, y }) => {
-      state.grid[y * COLS + x] = 1;
+      const index = y * COLS + x;
+      if (!state.grid[index]) state.cellAges[index] = 1;
+      state.grid[index] = 1;
     });
     state.nextGrid.fill(0);
     state.population = countPopulation(state.grid);
@@ -976,6 +1026,9 @@
         return;
       }
     }
+
+    // 设置弹窗打开期间只允许编辑参数，游戏快捷键不会改变场地或播放状态。
+    if (els.mutationModal.classList.contains('is-open')) return;
 
     const tag = event.target?.tagName;
     const isEditable = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';

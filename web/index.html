@@ -114,6 +114,11 @@
         <input id="mutationEnabled" type="checkbox">
         <span>启用细胞突变</span>
       </label>
+      <label class="setting-toggle setting-toggle-secondary">
+        <input id="mutationPreferStable" type="checkbox" aria-describedby="mutationStableHelp">
+        <span>优先选择长时间未改变的细胞</span>
+      </label>
+      <p class="settings-note stable-help" id="mutationStableHelp">优先抽取连续存活代数最多的格子；代数相同时随机选择，暂停不增加记录。</p>
       <div class="settings-grid">
         <label>
           <span>每秒抽取数量</span>
@@ -123,16 +128,21 @@
           <span>单个细胞突变概率（%）</span>
           <input id="mutationProbability" type="number" min="0" max="100" step="1">
         </label>
-        <label>
-          <span>死亡比例（%）</span>
-          <input id="mutationDeathRatio" type="number" min="0" max="100" step="1">
-        </label>
-        <label>
-          <span>移动比例（%）</span>
-          <input id="mutationMoveRatio" type="number" min="0" max="100" step="1">
-        </label>
       </div>
-      <p class="settings-note">死亡比例和移动比例会自动归一化为 100%。参数会保存在本地，启用状态每次打开游戏时默认关闭。</p>
+      <div class="mutation-ratio-control">
+        <label for="mutationRatioRange" class="ratio-title">突变方式比例</label>
+        <div class="ratio-labels">
+          <span>死亡 <strong id="mutationDeathValue">50%</strong></span>
+          <span>移动 <strong id="mutationMoveValue">50%</strong></span>
+        </div>
+        <input id="mutationRatioRange" type="range" min="0" max="100" step="1" value="50" aria-describedby="mutationRatioHelp">
+        <div class="ratio-adjustments">
+          <button id="mutationRatioLeftButton" type="button">向左加1</button>
+          <button id="mutationRatioRightButton" type="button">向右加1</button>
+        </div>
+        <p class="settings-note" id="mutationRatioHelp">向左增加死亡比例，向右增加移动比例；微调按钮每次调整 1 个百分点。</p>
+      </div>
+      <p class="settings-note">参数和优先选项会保存在本地，细胞突变每次打开游戏时默认关闭。</p>
       <div class="editor-actions">
         <span></span>
         <div class="right-actions">
