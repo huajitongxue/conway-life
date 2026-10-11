@@ -13,6 +13,8 @@
 /tools/
 
 # 编辑器和 Agent 本地状态
+/AGENTS.md
+/CLAUDE.md
 /.agents/
 /.codex/
 /.claude/
