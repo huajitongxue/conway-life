@@ -1,0 +1,216 @@
+name: 构建并发布
+
+# 推送 v* 标签时自动构建并发布；也可以在 Actions 页面手动触发（手动触发只构建、不发 Release）。
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+# 默认只读，需要写权限的 job 单独提权。
+permissions:
+  contents: read
+
+# 同一个标签的构建不并发，避免两个 run 同时往同一个 Release 传附件。
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  # ---------------------------------------------------------------- 版本与静态检查
+  verify:
+    name: 版本与静态检查
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.check.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: 核对版本一致性、标签与发布说明
+        id: check
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="$(tr -d ' \t\r\n' < VERSION)"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "本次版本号：$VERSION"
+
+          fail=0
+          first_version() { sed -n 's/.*"version": "\([^"]*\)".*/\1/p' "$1" | sed -n "${2}p"; }
+
+          check_eq() {
+            if [ "$2" != "$3" ]; then
+              echo "::error file=$1::$1 的版本号是「$3」，应为「$2」"
+              fail=1
+            fi
+          }
+
+          check_eq VERSION                "$VERSION" "$(tr -d ' \t\r\n' < VERSION)"
+          check_eq package.json           "$VERSION" "$(first_version package.json 1)"
+          check_eq package-lock.json      "$VERSION" "$(first_version package-lock.json 1)"
+          check_eq package-lock.json      "$VERSION" "$(first_version package-lock.json 2)"
+          check_eq src-tauri/Cargo.toml   "$VERSION" "$(sed -n 's/^version = "\([^"]*\)".*/\1/p' src-tauri/Cargo.toml | head -n1)"
+          check_eq src-tauri/Cargo.lock   "$VERSION" "$(awk '/^name = "conway-life"$/{getline; print}' src-tauri/Cargo.lock | sed -n 's/.*version = "\([^"]*\)".*/\1/p')"
+          check_eq src-tauri/tauri.conf.json "$VERSION" "$(first_version src-tauri/tauri.conf.json 1)"
+
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            tag_version="${GITHUB_REF_NAME#v}"
+            if [ "$tag_version" != "$VERSION" ]; then
+              echo "::error::标签「$GITHUB_REF_NAME」和 VERSION「$VERSION」对不上，先改版本号再打标签"
+              fail=1
+            fi
+            if [ ! -f "docs/releases/v$VERSION.md" ]; then
+              echo "::error::缺少 docs/releases/v$VERSION.md，Release 正文没有来源"
+              fail=1
+            fi
+          else
+            echo "::notice::手动触发，跳过标签与发布说明检查（不会发 Release）"
+          fi
+
+          [ "$fail" -eq 0 ] || exit 1
+          echo "版本检查通过"
+
+      - name: 静态检查
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check web/js/script.js
+          node --check web/js/platform.js
+          node --check electron/main.cjs
+          echo "三个脚本语法检查通过"
+
+  # ---------------------------------------------------------------- Electron 免安装版
+  electron:
+    name: 打包 Electron 免安装版
+    needs: verify
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: 安装依赖
+        run: npm ci
+
+      - name: 打包（npm run dist）
+        run: npm run dist
+
+      - name: 核对产物
+        shell: bash
+        env:
+          VERSION: ${{ needs.verify.outputs.version }}
+        run: |
+          set -euo pipefail
+          exe="dist/Conway-Life-${VERSION}-Windows-x64.exe"
+          [ -f "$exe" ] || { echo "::error::没有生成 $exe"; exit 1; }
+          ls -l "$exe"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: electron-portable
+          path: dist/Conway-Life-*-Windows-x64.exe
+          if-no-files-found: error
+
+  # ---------------------------------------------------------------- Tauri 两种安装包
+  tauri:
+    name: 打包 Tauri（NSIS + MSI）
+    needs: verify
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: 安装依赖
+        run: npm ci
+
+      - name: 打包（npm run tauri:build）
+        run: npm run tauri:build
+
+      - name: 收集安装包
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          shopt -s nullglob
+          nsis=(src-tauri/target/release/bundle/nsis/*-setup.exe)
+          msi=(src-tauri/target/release/bundle/msi/*.msi)
+          [ "${#nsis[@]}" -eq 1 ] || { echo "::error::NSIS 产物数量异常：${#nsis[@]}"; exit 1; }
+          [ "${#msi[@]}" -eq 1 ] || { echo "::error::MSI 产物数量异常：${#msi[@]}"; exit 1; }
+          # 打包出来的文件名是中文产品名，这里先改成中性名，交付名留到 Release 环节拼。
+          cp "${nsis[0]}" out/tauri-setup.exe
+          cp "${msi[0]}" out/tauri.msi
+          ls -l out
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tauri-bundles
+          path: out/*
+          if-no-files-found: error
+
+  # ---------------------------------------------------------------- 汇总并发布
+  release:
+    name: 发布 Release
+    needs: [verify, electron, tauri]
+    # 手动触发时只构建，不发 Release。
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: downloaded
+
+      - name: 组装交付文件并生成校验值
+        env:
+          VERSION: ${{ needs.verify.outputs.version }}
+        run: |
+          set -euo pipefail
+          mkdir -p release
+          cp downloaded/electron-portable/Conway-Life-*-Windows-x64.exe "release/Conway-Life-${VERSION}-Windows-x64.exe"
+          cp downloaded/tauri-bundles/tauri-setup.exe "release/Conway-Life-${VERSION}-Tauri-Windows-x64-setup.exe"
+          cp downloaded/tauri-bundles/tauri.msi "release/Conway-Life-${VERSION}-Tauri-Windows-x64.msi"
+          cd release
+          sha256sum ./*.exe ./*.msi > "Conway-Life-${VERSION}-SHA256SUMS.txt"
+          cat "Conway-Life-${VERSION}-SHA256SUMS.txt"
+          sha256sum -c "Conway-Life-${VERSION}-SHA256SUMS.txt"
+          ls -l
+
+      - name: 创建或更新 Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.verify.outputs.version }}
+        run: |
+          set -euo pipefail
+          tag="v${VERSION}"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            # 同一个标签重跑时用 --clobber 覆盖同名附件，保证附件一定是本次构建的。
+            echo "Release $tag 已存在，覆盖上传附件"
+            gh release upload "$tag" release/* --clobber
+          else
+            gh release create "$tag" release/* \
+              --verify-tag \
+              --title "康威生命游戏 $tag" \
+              --notes-file "docs/releases/${tag}.md"
+          fi
+          gh release view "$tag" --json tagName,isDraft,isPrerelease,url,assets
