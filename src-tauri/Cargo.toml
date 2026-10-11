@@ -1,6 +1,6 @@
 [package]
 name = "conway-life"
-version = "1.4.0"
+version = "1.5.0"
 description = "离线康威生命游戏的 Tauri 桌面壳"
 authors = ["huajitongxue"]
 license = "MIT"
@@ -19,3 +19,4 @@ tauri-build = { version = "2.7.1", features = [] }
 
 [dependencies]
 tauri = { version = "2.12.1", features = [] }
+tauri-plugin-dialog = "2.8.2"

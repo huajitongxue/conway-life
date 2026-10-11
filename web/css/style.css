@@ -231,13 +231,13 @@ button:focus-visible, input:focus-visible, canvas:focus-visible {
 
 .modal { position: fixed; inset: 0; display: none; place-items: center; padding: 1rem; background: rgba(1, 7, 10, 0.72); backdrop-filter: blur(8px); z-index: 20; }
 .modal.is-open { display: grid; }
-.editor-panel, .settings-panel { width: min(760px, 100%); max-height: min(92vh, 850px); overflow: auto; padding: 1.1rem; border: 1px solid var(--border-strong); border-radius: 20px; background: #0a1c24; box-shadow: var(--shadow); }
+.editor-panel, .settings-panel { width: min(920px, 100%); max-height: min(94vh, 900px); overflow: auto; padding: 1.1rem; border: 1px solid var(--border-strong); border-radius: 20px; background: #0a1c24; box-shadow: var(--shadow); }
 .settings-panel { width: min(560px, 100%); }
 .editor-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; }
 .editor-head h2 { margin: 0 0 0.25rem; font-size: 1.3rem; }
 .editor-head p { margin: 0 0 0.8rem; color: var(--muted); font-size: 0.82rem; }
 .icon-button { width: 2.3rem; height: 2.3rem; padding: 0; border-radius: 50%; font-size: 1.2rem; line-height: 1; }
-.editor-stage { width: 100%; aspect-ratio: 4 / 3; overflow: hidden; border: 1px solid var(--border); border-radius: 13px; background: #07151c; }
+.editor-stage { width: 100%; aspect-ratio: 8 / 5; overflow: hidden; border: 1px solid var(--border); border-radius: 13px; background: #07151c; }
 .editor-actions { display: flex; justify-content: space-between; gap: 0.65rem; margin-top: 0.8rem; }
 .editor-actions .right-actions { display: flex; gap: 0.5rem; }
 .setting-toggle { display: flex; align-items: center; gap: 0.55rem; margin: 0.15rem 0 1rem; color: var(--text); font-weight: 700; }

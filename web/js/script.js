@@ -4,8 +4,8 @@
   // ===== 常量与基础状态 =====
   const COLS = 120;
   const ROWS = 80;
-  const EDITOR_COLS = 40;
-  const EDITOR_ROWS = 30;
+  const EDITOR_COLS = 80;
+  const EDITOR_ROWS = 50;
   const STORAGE_KEY = 'conway-life-custom-presets-v1';
   const MUTATION_STORAGE_KEY = 'conway-life-mutation-settings-v1';
   const RANDOM_DENSITY = 0.22;
@@ -1086,18 +1086,29 @@
       showToast('请先勾选要导出的形状');
       return;
     }
-    if (!writePresetFile(entries)) return;
-    exitPresetSelection(false);
+
+    const finish = () => exitPresetSelection(false);
+
+    // 桌面版走原生“另存为”对话框：WebView 自己的下载既不弹窗也不提示，用户找不到文件。
+    // 这条路径的提示由 savePresetsWithDialog 给出实际落盘路径，这里不再覆盖。
+    if (canSaveWithDialog()) {
+      savePresetsWithDialog(entries).then((saved) => {
+        if (saved) finish();
+      });
+      return;
+    }
+
+    if (!downloadPresetFile(entries)) return;
+    finish();
     showToast(`已导出 ${entries.length} 个形状`);
   }
 
-  function writePresetFile(entries) {
-    if (typeof Blob !== 'function' || typeof URL.createObjectURL !== 'function') {
-      showToast('当前环境不支持导出文件');
-      return false;
-    }
+  function presetFileName() {
+    return `conway-life-presets-${dateStamp(new Date())}.json`;
+  }
 
-    const payload = {
+  function buildPresetPayload(entries) {
+    return JSON.stringify({
       type: PRESET_FILE_TYPE,
       version: PRESET_FILE_VERSION,
       exportedAt: new Date().toISOString(),
@@ -1107,13 +1118,46 @@
         height: entry.height,
         cells: entry.cells.map(([x, y]) => [x, y])
       }))
-    };
+    }, null, 2);
+  }
 
-    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+  function canSaveWithDialog() {
+    // Tauri 桌面版开了 withGlobalTauri，能直接调用 Rust 侧命令。
+    return Boolean(globalThis.__TAURI__?.core?.invoke);
+  }
+
+  function savePresetsWithDialog(entries) {
+    return globalThis.__TAURI__.core
+      .invoke('export_presets_file', {
+        fileName: presetFileName(),
+        contents: buildPresetPayload(entries)
+      })
+      .then((savedPath) => {
+        if (!savedPath) {
+          showToast('已取消导出');
+          return false;
+        }
+        showToast(`已保存到 ${savedPath}`);
+        return true;
+      })
+      .catch((error) => {
+        const detail = error && error.message ? error.message : String(error);
+        showToast(`导出失败：${detail}`);
+        return false;
+      });
+  }
+
+  function downloadPresetFile(entries) {
+    if (typeof Blob !== 'function' || typeof URL.createObjectURL !== 'function') {
+      showToast('当前环境不支持导出文件');
+      return false;
+    }
+
+    const blob = new Blob([buildPresetPayload(entries)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `conway-life-presets-${dateStamp(new Date())}.json`;
+    link.download = presetFileName();
     link.style.display = 'none';
     document.body.appendChild(link);
     link.click();
@@ -1355,7 +1399,7 @@
     state.editorPresetId = null;
     state.editorGrid.fill(0);
     els.editorTitle.textContent = '新建形状';
-    els.editorSubtitle.textContent = '点击或拖拽点亮格子，右键擦除。保存后会自动裁剪外围空白。';
+    els.editorSubtitle.textContent = '点击或拖拽点亮格子，右键擦除；修改已有形状时可从空白处拖动整体。保存后会自动裁剪外围空白。';
     els.saveEditorButton.textContent = '保存为新预设';
     showEditor();
   }
@@ -1373,7 +1417,7 @@
       }
     });
     els.editorTitle.textContent = `修改「${preset.label}」`;
-    els.editorSubtitle.textContent = '在上面继续增删格子。保存后覆盖这个形状，名称和编号保持不变。';
+    els.editorSubtitle.textContent = '点击或拖拽增删格子；从空白处拖动可移动整体。保存后覆盖这个形状，名称和编号保持不变。';
     els.saveEditorButton.textContent = '保存修改';
     showEditor();
   }
@@ -1407,14 +1451,31 @@
       const cell = canvasToCell(editorCanvas, event.clientX, event.clientY);
       if (!cell) return;
       const index = cell.y * EDITOR_COLS + cell.x;
-      state.editorDrawing = { pointerId: event.pointerId, value: event.button === 2 ? 0 : state.editorGrid[index] ? 0 : 1 };
+      const movingShape = event.button === 0 && state.editorPresetId !== null && state.editorGrid[index] === 0;
+      state.editorDrawing = movingShape
+        ? {
+          pointerId: event.pointerId,
+          mode: 'move',
+          startCell: cell,
+          sourceGrid: state.editorGrid.slice()
+        }
+        : {
+          pointerId: event.pointerId,
+          mode: event.button === 2 ? 'erase' : 'draw',
+          value: event.button === 2 ? 0 : state.editorGrid[index] ? 0 : 1
+        };
       editorCanvas.setPointerCapture?.(event.pointerId);
-      setEditorCell(cell.x, cell.y, state.editorDrawing.value);
+      if (state.editorDrawing.mode !== 'move') setEditorCell(cell.x, cell.y, state.editorDrawing.value);
     });
     editorCanvas.addEventListener('pointermove', (event) => {
       if (!state.editorDrawing || event.pointerId !== state.editorDrawing.pointerId) return;
       const cell = canvasToCell(editorCanvas, event.clientX, event.clientY);
-      if (cell) setEditorCell(cell.x, cell.y, state.editorDrawing.value);
+      if (!cell) return;
+      if (state.editorDrawing.mode === 'move') {
+        moveEditorShape(cell.x - state.editorDrawing.startCell.x, cell.y - state.editorDrawing.startCell.y, state.editorDrawing.sourceGrid);
+      } else {
+        setEditorCell(cell.x, cell.y, state.editorDrawing.value);
+      }
     });
     const finish = (event) => {
       if (state.editorDrawing && event.pointerId === state.editorDrawing.pointerId) state.editorDrawing = null;
@@ -1425,6 +1486,29 @@
 
   function setEditorCell(x, y, value) {
     state.editorGrid[y * EDITOR_COLS + x] = value;
+    drawEditor();
+  }
+
+  function moveEditorShape(deltaX, deltaY, sourceGrid) {
+    const cells = [];
+    for (let y = 0; y < EDITOR_ROWS; y += 1) {
+      for (let x = 0; x < EDITOR_COLS; x += 1) {
+        if (sourceGrid[y * EDITOR_COLS + x]) cells.push([x, y]);
+      }
+    }
+    if (!cells.length) return;
+
+    const minX = Math.min(...cells.map(([x]) => x));
+    const maxX = Math.max(...cells.map(([x]) => x));
+    const minY = Math.min(...cells.map(([, y]) => y));
+    const maxY = Math.max(...cells.map(([, y]) => y));
+    const boundedX = Math.max(-minX, Math.min(EDITOR_COLS - 1 - maxX, deltaX));
+    const boundedY = Math.max(-minY, Math.min(EDITOR_ROWS - 1 - maxY, deltaY));
+
+    state.editorGrid.fill(0);
+    cells.forEach(([x, y]) => {
+      state.editorGrid[(y + boundedY) * EDITOR_COLS + x + boundedX] = 1;
+    });
     drawEditor();
   }
 
