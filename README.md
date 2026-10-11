@@ -42,6 +42,8 @@ Tauri 各版本都使用系统 WebView2。Windows 11 自带，通常不用管；
 
 v1.4.0 的产物已作为 [v1.4.0 Release](https://github.com/huajitongxue/conway-life/releases/tag/v1.4.0) 的附件发布，本地产物位于 `dist/`：
 
+- `Conway-Life-1.4.0-Windows-x64.exe`（Electron 免安装版）
+- `Conway-Life-1.4.0-Tauri-Windows-x64-portable.exe`（Tauri 免安装单文件）
 - `Conway-Life-1.4.0-Tauri-Windows-x64-setup.exe`
 - `Conway-Life-1.4.0-Tauri-Windows-x64.msi`
 
@@ -106,7 +108,7 @@ npm run dist
 
 ### 发布约定
 
-后续打包好的桌面程序统一作为 GitHub Release 附件发布：Electron 免安装版和 Tauri 安装版会放在同一个 Release 中。代码仓库保留源码和构建配置，不提交 `dist/`、`node_modules/` 或本地测试文件。本次 v1.4.0 的源码已提交并推送，三个附件已随 `v1.4.0` 标签发布。
+后续打包好的桌面程序统一作为 GitHub Release 附件发布：Electron 免安装版、Tauri 免安装单文件和 Tauri 两种安装版会放在同一个 Release 中。代码仓库保留源码和构建配置，不提交 `dist/`、`node_modules/` 或本地测试文件。本次 v1.4.0 的源码已提交并推送，四个可执行文件和校验文件（共五个附件）已随 `v1.4.0` 标签发布。
 
 每次发布保持 `VERSION`、npm 元数据、Rust 元数据、Tauri 配置和 README 的版本号一致，写好 `docs/releases/vX.Y.Z.md`，提交并推送源码，最后推送对应的 `vX.Y.Z` 标签。**推送标签后由 GitHub Actions 自动完成打包和发布**（配置见 `.github/workflows/build.yml`）：它会先核对各文件版本号、标签和发布说明是否齐全，再在 GitHub 的 Windows 环境上打包 Electron 免安装版和 Tauri 的免安装单文件 / NSIS / MSI，算出校验值并创建或更新 Release，上传四个可执行文件和校验文件（共五个附件）。整个过程不需要本地构建，也不需要开着电脑。
 
