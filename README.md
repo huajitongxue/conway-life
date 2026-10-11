@@ -100,7 +100,9 @@ npm run dist
 
 后续打包好的桌面程序统一作为 GitHub Release 附件发布：Electron 免安装版和 Tauri 安装版会放在同一个 Release 中。代码仓库保留源码和构建配置，不提交 `dist/`、`node_modules/` 或本地测试文件。本次 v1.4.0 的源码已提交并推送，三个附件已随 `v1.4.0` 标签发布。
 
-每次发布保持 `VERSION`、npm 元数据、Rust 元数据、Tauri 配置和 README 的版本号一致，重新打包后提交源码并推送对应的 `vX.Y.Z` 标签。Release 页面附上简短的更新和使用说明，说明保存在 `docs/releases/`，并上传该版本的 Electron `.exe`、Tauri `setup.exe` 和 `.msi`。
+每次发布保持 `VERSION`、npm 元数据、Rust 元数据、Tauri 配置和 README 的版本号一致，写好 `docs/releases/vX.Y.Z.md`，提交并推送源码，最后推送对应的 `vX.Y.Z` 标签。**推送标签后由 GitHub Actions 自动完成打包和发布**（配置见 `.github/workflows/build.yml`）：它会先核对各文件版本号、标签和发布说明是否齐全，再在 GitHub 的 Windows 环境上打包 Electron 免安装版和 Tauri 的 NSIS / MSI，算出校验值并创建或更新 Release，上传四个附件。整个过程不需要本地构建，也不需要开着电脑。
+
+本地构建仍然可用（见上文的 `npm run dist` 和 `npm run tauri:build`），适合改完代码想先出个包试试的情况；也可以手动触发上面那个工作流做一次「只构建、不发 Release」的演练。
 
 ## 功能
 

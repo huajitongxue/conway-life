@@ -203,14 +203,16 @@ jobs:
         run: |
           set -euo pipefail
           tag="v${VERSION}"
-          if gh release view "$tag" >/dev/null 2>&1; then
+          repo="${GITHUB_REPOSITORY}"
+          if gh release view "$tag" --repo "$repo" >/dev/null 2>&1; then
             # 同一个标签重跑时用 --clobber 覆盖同名附件，保证附件一定是本次构建的。
             echo "Release $tag 已存在，覆盖上传附件"
-            gh release upload "$tag" release/* --clobber
+            gh release upload "$tag" release/* --repo "$repo" --clobber
           else
             gh release create "$tag" release/* \
+              --repo "$repo" \
               --verify-tag \
               --title "康威生命游戏 $tag" \
               --notes-file "docs/releases/${tag}.md"
           fi
-          gh release view "$tag" --json tagName,isDraft,isPrerelease,url,assets
+          gh release view "$tag" --repo "$repo" --json tagName,isDraft,isPrerelease,url,assets
