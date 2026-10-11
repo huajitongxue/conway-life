@@ -28,9 +28,17 @@ git clone https://github.com/huajitongxue/conway-life.git
 
 自定义预设保存在 `%APPDATA%\conway-life`，移动或替换 `.exe` 不会清除预设。网页版和桌面版的存储相互独立，已有浏览器预设不会自动迁移。
 
-### Tauri Windows 安装版
+### Tauri Windows 版
 
-项目同时提供 Tauri 2 的 Windows x64 安装版，可选择 NSIS `setup.exe` 或 MSI 安装程序，安装界面为简体中文，NSIS 默认仅为当前用户安装。Tauri 使用系统 WebView2；缺少 WebView2 时，安装程序会联网下载并安装运行时，不内置离线 WebView2 安装包。已安装 WebView2 后，游戏本身可以离线运行。
+项目同时提供 Tauri 2 的 Windows x64 版本，有三种形态：
+
+- **免安装单文件** `Conway-Life-X.Y.Z-Tauri-Windows-x64-portable.exe`：就是 Tauri 编译出来的裸 `conway-life.exe`，只有约 9 MB，自带全部依赖，双击即可运行，不用安装。它比 Electron 版小十倍以上，代价是依赖系统 WebView2（见下）。**想要最小、启动最快就用这个。**
+- **NSIS 安装版** `...-Tauri-Windows-x64-setup.exe`
+- **MSI 安装版** `...-Tauri-Windows-x64.msi`
+
+后两种是同一个程序的两种安装格式，任选一种安装即可，不需要都装；安装界面为简体中文，NSIS 默认仅为当前用户安装。
+
+Tauri 各版本都使用系统 WebView2。Windows 11 自带，通常不用管；Windows 10 需要机器上装过 Microsoft Edge（绝大多数机器都有）。确实缺少 WebView2 时，安装程序会联网下载并安装运行时，不内置离线 WebView2 安装包；**免安装单文件不会自动装运行时，缺 WebView2 时会启动失败**，此时请用安装版或先手动装 WebView2 Runtime。装好之后游戏本身可以离线运行。
 
 v1.4.0 的产物已作为 [v1.4.0 Release](https://github.com/huajitongxue/conway-life/releases/tag/v1.4.0) 的附件发布，本地产物位于 `dist/`：
 
@@ -100,7 +108,7 @@ npm run dist
 
 后续打包好的桌面程序统一作为 GitHub Release 附件发布：Electron 免安装版和 Tauri 安装版会放在同一个 Release 中。代码仓库保留源码和构建配置，不提交 `dist/`、`node_modules/` 或本地测试文件。本次 v1.4.0 的源码已提交并推送，三个附件已随 `v1.4.0` 标签发布。
 
-每次发布保持 `VERSION`、npm 元数据、Rust 元数据、Tauri 配置和 README 的版本号一致，写好 `docs/releases/vX.Y.Z.md`，提交并推送源码，最后推送对应的 `vX.Y.Z` 标签。**推送标签后由 GitHub Actions 自动完成打包和发布**（配置见 `.github/workflows/build.yml`）：它会先核对各文件版本号、标签和发布说明是否齐全，再在 GitHub 的 Windows 环境上打包 Electron 免安装版和 Tauri 的 NSIS / MSI，算出校验值并创建或更新 Release，上传四个附件。整个过程不需要本地构建，也不需要开着电脑。
+每次发布保持 `VERSION`、npm 元数据、Rust 元数据、Tauri 配置和 README 的版本号一致，写好 `docs/releases/vX.Y.Z.md`，提交并推送源码，最后推送对应的 `vX.Y.Z` 标签。**推送标签后由 GitHub Actions 自动完成打包和发布**（配置见 `.github/workflows/build.yml`）：它会先核对各文件版本号、标签和发布说明是否齐全，再在 GitHub 的 Windows 环境上打包 Electron 免安装版和 Tauri 的免安装单文件 / NSIS / MSI，算出校验值并创建或更新 Release，上传四个可执行文件和校验文件（共五个附件）。整个过程不需要本地构建，也不需要开着电脑。
 
 本地构建仍然可用（见上文的 `npm run dist` 和 `npm run tauri:build`），适合改完代码想先出个包试试的情况；也可以手动触发上面那个工作流做一次「只构建、不发 Release」的演练。
 
