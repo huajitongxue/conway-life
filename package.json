@@ -16,6 +16,7 @@
   "scripts": {
     "start": "electron .",
     "tauri:dev": "tauri dev",
+    "tauri:portable": "tauri build --no-bundle && node scripts/copy-tauri-portable.cjs",
     "tauri:build": "tauri build --bundles nsis,msi --ci",
     "tauri:check": "cargo check --manifest-path src-tauri/Cargo.toml",
     "icon": "node scripts/create-icon.cjs",

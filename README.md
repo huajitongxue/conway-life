@@ -68,6 +68,14 @@ npm run tauri:build
 
 原始安装包生成于 `src-tauri/target/release/bundle/nsis/` 和 `src-tauri/target/release/bundle/msi/`，交付时复制到 `dist/` 并按上述文件名区分 Electron 与 Tauri。首次构建可能需要联网下载 Rust 依赖、NSIS 和 WiX 工具。
 
+**如果只是本地自己玩，用这条就够了**（不生成安装包，构建更快）：
+
+```bash
+npm run tauri:portable
+```
+
+它执行 `tauri build --no-bundle`，然后把裸 exe 复制成 `dist/Conway-Life-<版本>-Tauri-Windows-x64-portable.exe`，结束时打印完整路径，双击即可运行。正式发布不需要本地构建，交给 GitHub Actions（见下文「发布约定」）。
+
 NSIS 和 WiX 缓存放在项目的 `src-tauri/target/.tauri/` 内，避免在 C 盘重复保存打包工具。
 
 Tauri、Electron 和浏览器共用 `web/` 目录中的游戏页面。不同运行方式的自定义预设分别保存在各自的 WebView 存储中，不会自动互相迁移。
@@ -112,7 +120,7 @@ npm run dist
 
 每次发布保持 `VERSION`、npm 元数据、Rust 元数据、Tauri 配置和 README 的版本号一致，写好 `docs/releases/vX.Y.Z.md`，提交并推送源码，最后推送对应的 `vX.Y.Z` 标签。**推送标签后由 GitHub Actions 自动完成打包和发布**（配置见 `.github/workflows/build.yml`）：它会先核对各文件版本号、标签和发布说明是否齐全，再在 GitHub 的 Windows 环境上打包 Electron 免安装版和 Tauri 的免安装单文件 / NSIS / MSI，算出校验值并创建或更新 Release，上传四个可执行文件和校验文件（共五个附件）。整个过程不需要本地构建，也不需要开着电脑。
 
-本地构建仍然可用（见上文的 `npm run dist` 和 `npm run tauri:build`），适合改完代码想先出个包试试的情况；也可以手动触发上面那个工作流做一次「只构建、不发 Release」的演练。
+日常本地构建只需要 `npm run tauri:portable`（出免安装单文件自用）；`npm run dist`（Electron）和 `npm run tauri:build`（Tauri 安装包）留给 GitHub Actions 使用，需要本地验证时也可以跑。也可以手动触发上面那个工作流做一次「只构建、不发 Release」的演练。
 
 ## 功能
 
@@ -223,7 +231,8 @@ conway-life/
 ├── assets/
 │   └── icon.ico        # 程序图标
 ├── scripts/
-│   └── create-icon.cjs # 图标生成脚本，npm run icon 可重新生成
+│   ├── create-icon.cjs # 图标生成脚本，npm run icon 可重新生成
+│   └── copy-tauri-portable.cjs # 把本地 Tauri 免安装版复制到 dist/，npm run tauri:portable 用
 ├── docs/
 │   └── releases/       # 各版本的 Release 说明
 ├── package.json        # Electron / Tauri 依赖与桌面脚本
@@ -233,7 +242,7 @@ conway-life/
 └── LICENSE             # MIT 开源协议
 ```
 
-网页版无需打包，修改 `web/` 中的 HTML、CSS 或 JavaScript 后刷新页面即可；Electron 桌面版发布前需重新执行 `npm run dist`，Tauri 安装版执行 `npm run tauri:build`。`script.js` 按初始化、逻辑更新、画布绘制、预设管理、编辑器和 UI 事件划分。
+网页版无需打包，修改 `web/` 中的 HTML、CSS 或 JavaScript 后刷新页面即可；本地自用执行 `npm run tauri:portable`，正式发布由 GitHub Actions 在推送 `v*` 标签时自动完成。`script.js` 按初始化、逻辑更新、画布绘制、预设管理、编辑器和 UI 事件划分。
 
 ## 开源协议
 
