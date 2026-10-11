@@ -144,7 +144,7 @@ jobs:
       - name: 打包（npm run tauri:build）
         run: npm run tauri:build
 
-      - name: 收集安装包
+      - name: 收集安装包与免安装版
         shell: bash
         run: |
           set -euo pipefail
@@ -157,6 +157,10 @@ jobs:
           # 打包出来的文件名是中文产品名，这里先改成中性名，交付名留到 Release 环节拼。
           cp "${nsis[0]}" out/tauri-setup.exe
           cp "${msi[0]}" out/tauri.msi
+          # Tauri 的裸 exe 本身自带全部依赖（只依赖系统 WebView2），可以当免安装版直接双击运行。
+          bare=src-tauri/target/release/conway-life.exe
+          [ -f "$bare" ] || { echo "::error::没有生成 $bare"; exit 1; }
+          cp "$bare" out/tauri-portable.exe
           ls -l out
 
       - uses: actions/upload-artifact@v4
@@ -188,6 +192,7 @@ jobs:
           set -euo pipefail
           mkdir -p release
           cp downloaded/electron-portable/Conway-Life-*-Windows-x64.exe "release/Conway-Life-${VERSION}-Windows-x64.exe"
+          cp downloaded/tauri-bundles/tauri-portable.exe "release/Conway-Life-${VERSION}-Tauri-Windows-x64-portable.exe"
           cp downloaded/tauri-bundles/tauri-setup.exe "release/Conway-Life-${VERSION}-Tauri-Windows-x64-setup.exe"
           cp downloaded/tauri-bundles/tauri.msi "release/Conway-Life-${VERSION}-Tauri-Windows-x64.msi"
           cd release
