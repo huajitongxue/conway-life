@@ -4,7 +4,7 @@
 
 **在线试玩**：<https://huajitongxue.github.io/conway-life/> —— 直接用浏览器打开即可游玩，无需下载或安装。
 
-当前版本：**v1.5.0**，已发布到 GitHub Release。
+当前版本：**v1.5.1**，已发布到 GitHub Release。
 
 已发布的桌面版可在 [GitHub Releases](https://github.com/huajitongxue/conway-life/releases) 下载。Electron `.exe` 为免安装程序；Tauri `setup.exe` 和 `.msi` 是两种安装程序，选择一种即可。
 
@@ -24,7 +24,7 @@ git clone https://github.com/huajitongxue/conway-life.git
 
 桌面版使用 Electron，启动后默认最大化，直接显示游戏，没有浏览器的标签页、地址栏和收藏夹栏。按 `F11` 切换全屏，按 `Esc` 退出全屏；其余操作与网页版一致。
 
-打包产物为 `dist/Conway-Life-1.5.0-Windows-x64.exe`，适用于 Windows 10 / 11 的 x64 系统。双击即可运行，无需安装 Node.js、浏览器或其他依赖。免安装程序启动时会解压到临时目录，首次打开可能稍慢。
+打包产物为 `dist/Conway-Life-1.5.1-Windows-x64.exe`，适用于 Windows 10 / 11 的 x64 系统。双击即可运行，无需安装 Node.js、浏览器或其他依赖。免安装程序启动时会解压到临时目录，首次打开可能稍慢。
 
 自定义预设保存在 `%APPDATA%\conway-life`，移动或替换 `.exe` 不会清除预设。网页版和桌面版的存储相互独立，已有浏览器预设不会自动迁移。
 
@@ -40,12 +40,12 @@ git clone https://github.com/huajitongxue/conway-life.git
 
 Tauri 各版本都使用系统 WebView2。Windows 11 自带，通常不用管；Windows 10 需要机器上装过 Microsoft Edge（绝大多数机器都有）。确实缺少 WebView2 时，安装程序会联网下载并安装运行时，不内置离线 WebView2 安装包；**免安装单文件不会自动装运行时，缺 WebView2 时会启动失败**，此时请用安装版或先手动装 WebView2 Runtime。装好之后游戏本身可以离线运行。
 
-v1.5.0 的产物已作为 [v1.5.0 Release](https://github.com/huajitongxue/conway-life/releases/tag/v1.5.0) 的附件发布，本地产物位于 `dist/`：
+v1.5.1 的产物已作为 [v1.5.1 Release](https://github.com/huajitongxue/conway-life/releases/tag/v1.5.1) 的附件发布，本地产物位于 `dist/`：
 
-- `Conway-Life-1.5.0-Windows-x64.exe`（Electron 免安装版）
-- `Conway-Life-1.5.0-Tauri-Windows-x64-portable.exe`（Tauri 免安装单文件）
-- `Conway-Life-1.5.0-Tauri-Windows-x64-setup.exe`
-- `Conway-Life-1.5.0-Tauri-Windows-x64.msi`
+- `Conway-Life-1.5.1-Windows-x64.exe`（Electron 免安装版）
+- `Conway-Life-1.5.1-Tauri-Windows-x64-portable.exe`（Tauri 免安装单文件）
+- `Conway-Life-1.5.1-Tauri-Windows-x64-setup.exe`
+- `Conway-Life-1.5.1-Tauri-Windows-x64.msi`
 
 开始 Tauri 开发前，需要安装 Rust stable-msvc、Microsoft C++ Build Tools 和 WebView2。运行开发版：
 
@@ -116,7 +116,7 @@ npm run dist
 
 ### 发布约定
 
-后续打包好的桌面程序统一作为 GitHub Release 附件发布：Electron 免安装版、Tauri 免安装单文件和 Tauri 两种安装版会放在同一个 Release 中。代码仓库保留源码和构建配置，不提交 `dist/`、`node_modules/` 或本地测试文件。本次 v1.5.0 的源码已提交并推送，四个可执行文件和校验文件（共五个附件）已随 `v1.5.0` 标签发布。
+后续打包好的桌面程序统一作为 GitHub Release 附件发布：Electron 免安装版、Tauri 免安装单文件和 Tauri 两种安装版会放在同一个 Release 中。代码仓库保留源码和构建配置，不提交 `dist/`、`node_modules/` 或本地测试文件。本次 v1.5.1 的源码已提交并推送，四个可执行文件和校验文件（共五个附件）已随 `v1.5.1` 标签发布。
 
 每次发布保持 `VERSION`、npm 元数据、Rust 元数据、Tauri 配置和 README 的版本号一致，写好 `docs/releases/vX.Y.Z.md`，提交并推送源码，最后推送对应的 `vX.Y.Z` 标签。**推送标签后由 GitHub Actions 自动完成打包和发布**（配置见 `.github/workflows/build.yml`）：它会先核对各文件版本号、标签和发布说明是否齐全，再在 GitHub 的 Windows 环境上打包 Electron 免安装版和 Tauri 的免安装单文件 / NSIS / MSI，算出校验值并创建或更新 Release，上传四个可执行文件和校验文件（共五个附件）。整个过程不需要本地构建，也不需要开着电脑。
 
@@ -193,7 +193,7 @@ npm run dist
 点击预设库标题旁的“形状管理”打开弹窗，里面按预设库顺序列出全部形状（系统预设在前，自定义预设在后），最前面还有一个“＋ 新建空白形状”。
 
 - **修改已有形状**：点形状卡片就能进入编辑器改它。编辑器会载入原来的图案（放在编辑区左上角），保存按钮变成“保存修改”，保存后**覆盖这个形状**，编号和名称都保持不变。系统预设是程序内置的，不能直接修改，点了会提示先“复制一份”。
-- **整体拖动**：修改已有形状时，从编辑器空白区域按住左键拖动，可以移动整个图案；单击空白不会改变图案。图案会被限制在 80×50 编辑区域内，新建空白形状仍使用空白区域绘制。
+- **编辑与整体拖动**：修改已有形状时，左键单击空白格新增细胞，单击活细胞删除，右键点击或拖拽擦除。从空白区域按住左键拖动可以移动整个图案；轻微的鼠标抖动仍按单击处理，整体拖动不会额外点亮起始格。图案会被限制在 80×50 编辑区域内，新建空白形状仍使用空白区域拖拽绘制。
 - **复制一份**：每张卡片右下角有“复制一份”，把该形状复制成一个新的自定义预设，名称自动取“原名 副本”“原名 副本2”等避免重名。系统预设也能这样复制成可自由修改的自定义预设。
 - 弹窗里点空白处、点 `×` 或按 `Esc` 都能关闭；弹窗打开期间游戏快捷键不会改变场地或播放状态。
 

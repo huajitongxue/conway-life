@@ -6,6 +6,8 @@
   const ROWS = 80;
   const EDITOR_COLS = 80;
   const EDITOR_ROWS = 50;
+  // 用屏幕像素区分单击与整体拖动，避免鼠标轻微抖动误触发移动。
+  const EDITOR_DRAG_THRESHOLD = 4;
   const STORAGE_KEY = 'conway-life-custom-presets-v1';
   const MUTATION_STORAGE_KEY = 'conway-life-mutation-settings-v1';
   const RANDOM_DENSITY = 0.22;
@@ -1417,7 +1419,7 @@
       }
     });
     els.editorTitle.textContent = `修改「${preset.label}」`;
-    els.editorSubtitle.textContent = '点击或拖拽增删格子；从空白处拖动可移动整体。保存后覆盖这个形状，名称和编号保持不变。';
+    els.editorSubtitle.textContent = '单击格子增删细胞，右键擦除；从空白处拖动可移动整体。保存后覆盖这个形状，名称和编号保持不变。';
     els.saveEditorButton.textContent = '保存修改';
     showEditor();
   }
@@ -1434,16 +1436,29 @@
   }
 
   function closeEditor() {
+    state.editorDrawing = null;
     els.editorModal.classList.remove('is-open');
     state.editorPresetId = null;
   }
 
   function clearEditor() {
+    state.editorDrawing = null;
     state.editorGrid.fill(0);
     drawEditor();
   }
 
   function bindEditorCanvasEvents() {
+    const updateMove = (event, cell) => {
+      const drawing = state.editorDrawing;
+      if (drawing.mode === 'pending-move') {
+        const distance = Math.hypot(event.clientX - drawing.startX, event.clientY - drawing.startY);
+        if (distance < EDITOR_DRAG_THRESHOLD) return;
+        drawing.mode = 'move';
+      }
+      if (cell) {
+        moveEditorShape(cell.x - drawing.startCell.x, cell.y - drawing.startCell.y, drawing.sourceGrid);
+      }
+    };
     editorCanvas.addEventListener('contextmenu', (event) => event.preventDefault());
     editorCanvas.addEventListener('pointerdown', (event) => {
       if (event.button !== 0 && event.button !== 2) return;
@@ -1451,12 +1466,15 @@
       const cell = canvasToCell(editorCanvas, event.clientX, event.clientY);
       if (!cell) return;
       const index = cell.y * EDITOR_COLS + cell.x;
-      const movingShape = event.button === 0 && state.editorPresetId !== null && state.editorGrid[index] === 0;
-      state.editorDrawing = movingShape
+      const canMoveShape = event.button === 0 && state.editorPresetId !== null && state.editorGrid[index] === 0;
+      // 空白格先等待手势结束：单击新增细胞，超过阈值后才整体移动。
+      state.editorDrawing = canMoveShape
         ? {
           pointerId: event.pointerId,
-          mode: 'move',
+          mode: 'pending-move',
           startCell: cell,
+          startX: event.clientX,
+          startY: event.clientY,
           sourceGrid: state.editorGrid.slice()
         }
         : {
@@ -1465,23 +1483,32 @@
           value: event.button === 2 ? 0 : state.editorGrid[index] ? 0 : 1
         };
       editorCanvas.setPointerCapture?.(event.pointerId);
-      if (state.editorDrawing.mode !== 'move') setEditorCell(cell.x, cell.y, state.editorDrawing.value);
+      if (state.editorDrawing.mode !== 'pending-move') setEditorCell(cell.x, cell.y, state.editorDrawing.value);
     });
     editorCanvas.addEventListener('pointermove', (event) => {
       if (!state.editorDrawing || event.pointerId !== state.editorDrawing.pointerId) return;
       const cell = canvasToCell(editorCanvas, event.clientX, event.clientY);
-      if (!cell) return;
-      if (state.editorDrawing.mode === 'move') {
-        moveEditorShape(cell.x - state.editorDrawing.startCell.x, cell.y - state.editorDrawing.startCell.y, state.editorDrawing.sourceGrid);
-      } else {
+      if (state.editorDrawing.mode === 'pending-move' || state.editorDrawing.mode === 'move') {
+        updateMove(event, cell);
+      } else if (cell) {
         setEditorCell(cell.x, cell.y, state.editorDrawing.value);
       }
     });
-    const finish = (event) => {
-      if (state.editorDrawing && event.pointerId === state.editorDrawing.pointerId) state.editorDrawing = null;
+    const finish = (event, cancelled = false) => {
+      const drawing = state.editorDrawing;
+      if (!drawing || event.pointerId !== drawing.pointerId) return;
+      if (!cancelled && (drawing.mode === 'pending-move' || drawing.mode === 'move')) {
+        const cell = canvasToCell(editorCanvas, event.clientX, event.clientY);
+        // 松开时也核对位移，兼容中间没有收到 pointermove 的情况。
+        updateMove(event, cell);
+        if (drawing.mode === 'pending-move' && cell) setEditorCell(drawing.startCell.x, drawing.startCell.y, 1);
+      }
+      state.editorDrawing = null;
     };
     editorCanvas.addEventListener('pointerup', finish);
-    editorCanvas.addEventListener('pointercancel', finish);
+    const cancel = (event) => finish(event, true);
+    editorCanvas.addEventListener('pointercancel', cancel);
+    editorCanvas.addEventListener('lostpointercapture', cancel);
   }
 
   function setEditorCell(x, y, value) {
