@@ -19,6 +19,7 @@
   const MAX_PRESET_LABEL = 16;
   const DEFAULT_LIBRARY_HELP = '拖拽卡片到场地放置，点击卡片不会改变地图。';
   const SELECT_LIBRARY_HELP = '勾选要导出的形状，再点“导出所选”。';
+  const history = globalThis.CONWAY_HISTORY.create(2000);
 
   const gameCanvas = document.getElementById('gameCanvas');
   const gameStage = gameCanvas.parentElement;
@@ -35,6 +36,7 @@
     generation: 0,
     population: 0,
     running: false,
+    playDirection: 'forward',
     speed: 10,
     boundary: 'wrap',
     showGrid: true,
@@ -47,6 +49,7 @@
     mutationDeathRatio: 0.5,
     mutationMoveRatio: 0.5,
     mutationResumeRunning: false,
+    mutationResumeDirection: 'forward',
     gameView: { width: 0, height: 0, dpr: 1 },
     editorView: { width: 0, height: 0, dpr: 1 },
     drawing: null,
@@ -59,6 +62,7 @@
     selectedPresetKeys: new Set(),
     renamingPresetId: null,
     presetDrag: null,
+    historyNavigationId: 0,
     preview: null,
     toastTimer: null
   };
@@ -71,6 +75,11 @@
     speedValue: document.getElementById('speedValue'),
     playButton: document.getElementById('playButton'),
     stepButton: document.getElementById('stepButton'),
+    backButton: document.getElementById('backButton'),
+    reverseButton: document.getElementById('reverseButton'),
+    historyPosition: document.getElementById('historyPosition'),
+    historyCounts: document.getElementById('historyCounts'),
+    historyMode: document.getElementById('historyMode'),
     clearButton: document.getElementById('clearButton'),
     randomButton: document.getElementById('randomButton'),
     boundaryButton: document.getElementById('boundaryButton'),
@@ -169,6 +178,7 @@
   function init() {
     loadCustomPresets();
     loadMutationSettings();
+    ensureHistory();
     bindEvents();
     resizeCanvases();
     renderPresetLibrary();
@@ -186,12 +196,12 @@
       observer.observe(editorCanvas.parentElement);
     }
     document.addEventListener('keydown', handleKeydown);
+    window.addEventListener('blur', () => finishGameDrawing(false));
 
     els.playButton.addEventListener('click', toggleRunning);
-    els.stepButton.addEventListener('click', () => {
-      if (state.running) stopRunning();
-      step();
-    });
+    els.stepButton.addEventListener('click', forwardOne);
+    els.backButton.addEventListener('click', backwardOne);
+    els.reverseButton.addEventListener('click', toggleReverse);
     els.clearButton.addEventListener('click', () => clearBoard(true));
     els.randomButton.addEventListener('click', randomize);
     els.boundaryButton.addEventListener('click', toggleBoundary);
@@ -261,8 +271,91 @@
     bindEditorCanvasEvents();
   }
 
+  // ===== 历史记录与导航 =====
+  function snapshotState() {
+    const snapshot = { cellAges: state.cellAges };
+    globalThis.CONWAY_HISTORY.fields.forEach((field) => { snapshot[field] = state[field]; });
+    return snapshot;
+  }
+
+  function ensureHistory() {
+    if (!history.status().length) history.reset(snapshotState());
+  }
+
+  function recordHistory(operation) {
+    const hadFuture = history.status().forward > 0;
+    const changed = history.append(snapshotState(), operation);
+    // 从历史中编辑出新分支后，正放立即转为实时演化。
+    if (changed && hadFuture) {
+      state.historyNavigationId += 1;
+      state.preview = null;
+      restartMutationTimer();
+    }
+    updatePlayButtons();
+    return changed;
+  }
+
+  function restoreHistory(snapshot) {
+    if (!snapshot) return false;
+    state.cellAges.set(snapshot.cellAges);
+    globalThis.CONWAY_HISTORY.fields.forEach((field) => { state[field] = snapshot[field]; });
+    for (let index = 0; index < state.grid.length; index += 1) {
+      state.grid[index] = state.cellAges[index] > 0 ? 1 : 0;
+    }
+    state.nextGrid.fill(0);
+    state.historyNavigationId += 1;
+    state.preview = null;
+    state.presetDrag = null;
+    updateStats();
+    updateMutationButton();
+    draw();
+    return true;
+  }
+
+  function backwardOne() {
+    finishGameDrawing(false);
+    stopRunning();
+    ensureHistory();
+    restoreHistory(history.backward());
+  }
+
+  function forwardOne() {
+    finishGameDrawing(false);
+    stopRunning();
+    step();
+  }
+
+  function toggleReverse() {
+    finishGameDrawing(false);
+    if (state.running && state.playDirection === 'reverse') stopRunning();
+    else startRunning('reverse');
+  }
+
+  function playbackTick() {
+    if (!state.running || state.drawing) return;
+    if (state.playDirection === 'reverse') {
+      restoreHistory(history.backward());
+      if (!history.status().backward) stopRunning();
+    } else {
+      step();
+    }
+  }
+
+  function prepareBoardEdit() {
+    finishGameDrawing(false);
+    ensureHistory();
+    if (state.running && state.playDirection === 'reverse') stopRunning();
+  }
+
   // ===== 游戏逻辑 =====
   function step() {
+    finishGameDrawing(false);
+    ensureHistory();
+    if (history.status().forward) {
+      restoreHistory(history.forward());
+      if (state.running && !history.status().forward) restartMutationTimer();
+      return;
+    }
     const source = state.grid;
     const target = state.nextGrid;
     let population = 0;
@@ -283,6 +376,7 @@
     state.nextGrid = source;
     state.population = population;
     state.generation += 1;
+    recordHistory('evolution');
     updateStats();
     draw();
   }
@@ -308,11 +402,16 @@
   }
 
   function toggleRunning() {
+    finishGameDrawing(false);
     if (state.running) stopRunning();
     else startRunning();
   }
 
-  function startRunning() {
+  function startRunning(direction = 'forward') {
+    finishGameDrawing(false);
+    ensureHistory();
+    if (direction === 'reverse' && !history.status().backward) { stopRunning(); return; }
+    state.playDirection = direction;
     state.running = true;
     restartTimer();
     restartMutationTimer();
@@ -334,14 +433,22 @@
 
   function restartTimer() {
     if (state.timerId !== null) window.clearInterval(state.timerId);
-    state.timerId = window.setInterval(step, 1000 / state.speed);
+    state.timerId = null;
+    if (!state.running) return;
+    const timerId = window.setInterval(() => {
+      if (state.timerId === timerId) playbackTick();
+    }, 1000 / state.speed);
+    state.timerId = timerId;
   }
 
   function restartMutationTimer() {
     if (state.mutationTimerId !== null) window.clearInterval(state.mutationTimerId);
     state.mutationTimerId = null;
-    if (state.running && state.mutationEnabled) {
-      state.mutationTimerId = window.setInterval(applyMutations, 1000);
+    if (state.running && state.playDirection === 'forward' && !history.status().forward && state.mutationEnabled) {
+      const timerId = window.setInterval(() => {
+        if (state.mutationTimerId === timerId) applyMutations();
+      }, 1000);
+      state.mutationTimerId = timerId;
     }
   }
 
@@ -350,6 +457,20 @@
     els.playButton.textContent = isRunning ? 'Ⅱ 暂停' : '▶ 播放';
     els.playButton.classList.toggle('is-running', isRunning);
     els.playButton.classList.toggle('is-paused', !isRunning);
+    const position = history.status();
+    const reversing = isRunning && state.playDirection === 'reverse';
+    els.backButton.disabled = position.backward === 0;
+    els.reverseButton.disabled = position.backward === 0 && !reversing;
+    els.reverseButton.textContent = reversing ? 'Ⅱ 停止倒放' : '◀ 倒放';
+    els.reverseButton.classList.toggle('is-active', reversing);
+    els.reverseButton.setAttribute('aria-pressed', String(reversing));
+    els.historyPosition.textContent = `历史位置 ${Math.max(0, position.cursor)} / ${Math.max(0, position.length - 1)}`;
+    els.historyCounts.textContent = `可倒退 ${position.backward} · 可前进 ${position.forward}`;
+    const mode = state.drawing ? '绘制中' : !isRunning ? '暂停'
+      : reversing ? '倒放中' : position.forward ? '历史重播' : '演化中';
+    const operations = { initial: '起点', evolution: '演化', mutation: '突变', draw: '绘制',
+      erase: '擦除', preset: '预设放置', clear: '清空', random: '随机', boundary: '边界切换', settings: '突变设置' };
+    els.historyMode.textContent = `${mode} · ${operations[position.operation] || '历史状态'}${position.dropped ? ' · 早期记录已淘汰' : ''}`;
   }
 
   function setSpeed(value) {
@@ -360,17 +481,20 @@
   }
 
   function clearBoard(resetGeneration) {
+    prepareBoardEdit();
     state.grid.fill(0);
     state.nextGrid.fill(0);
     state.cellAges.fill(0);
     state.population = 0;
     if (resetGeneration) state.generation = 0;
     state.preview = null;
+    recordHistory('clear');
     updateStats();
     draw();
   }
 
   function randomize() {
+    prepareBoardEdit();
     if (state.running) stopRunning();
     for (let i = 0; i < state.grid.length; i += 1) {
       state.grid[i] = Math.random() < RANDOM_DENSITY ? 1 : 0;
@@ -379,16 +503,16 @@
     state.nextGrid.fill(0);
     state.generation = 0;
     state.population = countPopulation(state.grid);
+    recordHistory('random');
     updateStats();
     draw();
   }
 
   function toggleBoundary() {
+    prepareBoardEdit();
     state.boundary = state.boundary === 'wrap' ? 'finite' : 'wrap';
-    const isWrap = state.boundary === 'wrap';
-    els.boundaryButton.textContent = `边界：${isWrap ? '环绕' : '有限'}`;
-    els.boundaryButton.classList.toggle('is-active', isWrap);
-    els.boundaryValue.textContent = isWrap ? '环绕' : '有限';
+    recordHistory('boundary');
+    updateStats();
     draw();
   }
 
@@ -409,6 +533,8 @@
     els.generationValue.textContent = String(state.generation);
     els.populationValue.textContent = String(state.population);
     els.boundaryValue.textContent = state.boundary === 'wrap' ? '环绕' : '有限';
+    els.boundaryButton.textContent = `边界：${state.boundary === 'wrap' ? '环绕' : '有限'}`;
+    els.boundaryButton.classList.toggle('is-active', state.boundary === 'wrap');
     els.speedValue.textContent = `${state.speed} 步/秒`;
     updatePlayButtons();
   }
@@ -454,7 +580,10 @@
 
   function openMutationSettings() {
     if (els.mutationModal.classList.contains('is-open')) return;
+    finishGameDrawing(false);
+    ensureHistory();
     state.mutationResumeRunning = state.running;
+    state.mutationResumeDirection = state.playDirection;
     if (state.running) stopRunning();
     els.mutationEnabled.checked = state.mutationEnabled;
     els.mutationPreferStable.checked = state.mutationPreferStable;
@@ -469,9 +598,10 @@
     if (!els.mutationModal.classList.contains('is-open')) return;
     els.mutationModal.classList.remove('is-open');
     const shouldResume = restoreRunning && state.mutationResumeRunning;
+    const direction = state.mutationResumeDirection;
     state.mutationResumeRunning = false;
     els.mutationButton.focus();
-    if (shouldResume) startRunning();
+    if (shouldResume) startRunning(direction);
   }
 
   function cancelMutationSettings() {
@@ -479,6 +609,10 @@
   }
 
   function saveMutationSettings() {
+    ensureHistory();
+    const before = globalThis.CONWAY_HISTORY.fields
+      .filter((field) => field.startsWith('mutation'))
+      .map((field) => state[field]);
     state.mutationCount = clampInt(els.mutationCount.value, 1, 1000, 10);
     state.mutationProbability = clamp(Number(els.mutationProbability.value) / 100, 0, 1, 0.1);
     const movePercent = clampInt(els.mutationRatioRange.value, 0, 100, 50);
@@ -486,6 +620,13 @@
     state.mutationMoveRatio = movePercent / 100;
     state.mutationPreferStable = els.mutationPreferStable.checked;
     state.mutationEnabled = els.mutationEnabled.checked;
+    const changed = globalThis.CONWAY_HISTORY.fields
+      .filter((field) => field.startsWith('mutation'))
+      .some((field, index) => state[field] !== before[index]);
+    if (changed) {
+      recordHistory('settings');
+      if (state.mutationResumeDirection === 'reverse') state.mutationResumeRunning = false;
+    }
     persistMutationSettings();
     updateMutationButton();
     restartMutationTimer();
@@ -494,7 +635,10 @@
   }
 
   function applyMutations() {
-    if (!state.running || !state.mutationEnabled || state.population === 0) return;
+    if (!state.running || state.playDirection !== 'forward' || history.status().forward
+      || state.drawing || !state.mutationEnabled || state.population === 0) return;
+    ensureHistory();
+    let changed = false;
 
     const candidates = selectMutationCells();
     for (const sourceIndex of candidates) {
@@ -502,6 +646,7 @@
       if (Math.random() < state.mutationDeathRatio) {
         state.grid[sourceIndex] = 0;
         state.cellAges[sourceIndex] = 0;
+        changed = true;
         continue;
       }
 
@@ -525,10 +670,13 @@
       state.cellAges[sourceIndex] = 0;
       state.grid[targetIndex] = 1;
       state.cellAges[targetIndex] = 1;
+      changed = true;
     }
 
+    if (!changed) return;
     state.nextGrid.fill(0);
     state.population = countPopulation(state.grid);
+    recordHistory('mutation');
     updateStats();
     draw();
   }
@@ -578,15 +726,28 @@
   }
 
   // ===== 主画布绘制与鼠标操作 =====
+  function finishGameDrawing(resumeRunning) {
+    const drawing = state.drawing;
+    if (!drawing) return;
+    state.drawing = null;
+    if (gameCanvas.hasPointerCapture?.(drawing.pointerId)) gameCanvas.releasePointerCapture(drawing.pointerId);
+    recordHistory(drawing.value ? 'draw' : 'erase');
+    if (resumeRunning && drawing.resumeForward) startRunning();
+  }
+
   function bindGameCanvasEvents() {
     gameCanvas.addEventListener('contextmenu', (event) => event.preventDefault());
     gameCanvas.addEventListener('pointerdown', (event) => {
-      if (event.button !== 0 && event.button !== 2) return;
+      if (state.drawing || (event.button !== 0 && event.button !== 2)) return;
       event.preventDefault();
       const cell = canvasToCell(gameCanvas, event.clientX, event.clientY);
       if (!cell) return;
-      state.drawing = { pointerId: event.pointerId, value: event.button === 2 ? 0 : 1 };
+      ensureHistory();
+      const resumeForward = state.running && state.playDirection === 'forward';
+      stopRunning();
+      state.drawing = { pointerId: event.pointerId, value: event.button === 2 ? 0 : 1, resumeForward };
       gameCanvas.setPointerCapture?.(event.pointerId);
+      updatePlayButtons();
       setCell(cell.x, cell.y, state.drawing.value);
     });
     gameCanvas.addEventListener('pointermove', (event) => {
@@ -595,22 +756,31 @@
       if (cell) setCell(cell.x, cell.y, state.drawing.value);
     });
     const finishDrawing = (event) => {
-      if (state.drawing && event.pointerId === state.drawing.pointerId) state.drawing = null;
+      if (!state.drawing || event.pointerId !== state.drawing.pointerId) return;
+      const cell = canvasToCell(gameCanvas, event.clientX, event.clientY);
+      if (cell) setCell(cell.x, cell.y, state.drawing.value);
+      finishGameDrawing(true);
     };
     gameCanvas.addEventListener('pointerup', finishDrawing);
-    gameCanvas.addEventListener('pointercancel', finishDrawing);
+    const cancelDrawing = (event) => {
+      if (state.drawing && event.pointerId === state.drawing.pointerId) finishGameDrawing(false);
+    };
+    gameCanvas.addEventListener('pointercancel', cancelDrawing);
+    gameCanvas.addEventListener('lostpointercapture', cancelDrawing);
     gameCanvas.addEventListener('pointerleave', (event) => {
-      if (state.drawing && event.pointerId === state.drawing.pointerId && !gameCanvas.hasPointerCapture?.(event.pointerId)) state.drawing = null;
+      if (state.drawing && event.pointerId === state.drawing.pointerId && !gameCanvas.hasPointerCapture?.(event.pointerId)) finishGameDrawing(false);
     });
   }
 
   function setCell(x, y, value) {
     const index = y * COLS + x;
     if (state.grid[index] === value) return;
+    if (!state.drawing) prepareBoardEdit();
     state.grid[index] = value;
     state.cellAges[index] = value ? 1 : 0;
     state.population += value ? 1 : -1;
     state.nextGrid[index] = 0;
+    if (!state.drawing) recordHistory(value ? 'draw' : 'erase');
     updateStats();
     draw();
   }
@@ -737,11 +907,13 @@
       const startX = event.clientX;
       const startY = event.clientY;
       const pattern = getTransformedPattern(entry);
+      const navigationId = state.historyNavigationId;
       let dragging = false;
       card.setPointerCapture?.(pointerId);
 
       const move = (moveEvent) => {
         if (moveEvent.pointerId !== pointerId) return;
+        if (navigationId !== state.historyNavigationId) return;
         const distance = Math.hypot(moveEvent.clientX - startX, moveEvent.clientY - startY);
         if (!dragging && distance > 5) dragging = true;
         if (!dragging) return;
@@ -759,10 +931,12 @@
         if (card.hasPointerCapture?.(pointerId)) card.releasePointerCapture(pointerId);
 
         const cell = canvasToCell(gameCanvas, finishEvent.clientX, finishEvent.clientY);
-        if (finishEvent.type === 'pointerup' && dragging && cell) {
+        // 回看已经换了场地，旧拖拽不能再往恢复后的状态放置。
+        const sameScene = navigationId === state.historyNavigationId;
+        if (sameScene && finishEvent.type === 'pointerup' && dragging && cell) {
           placePattern(pattern, cell.x, cell.y, false);
           showToast(`已放置${pattern.label}`);
-        } else if (finishEvent.type === 'pointerup' && !dragging) {
+        } else if (sameScene && finishEvent.type === 'pointerup' && !dragging) {
           showToast('预设只能拖拽到场地');
         }
 
@@ -778,7 +952,13 @@
   }
 
   function placePattern(pattern, anchorX, anchorY, clearFirst) {
-    if (clearFirst) clearBoard(true);
+    prepareBoardEdit();
+    if (clearFirst) {
+      // 清空并放置属于同一次操作，不能产生中间的空白历史。
+      state.grid.fill(0);
+      state.cellAges.fill(0);
+      state.generation = 0;
+    }
     const cells = getPlacementCells(pattern, anchorX, anchorY);
     cells.forEach(({ x, y }) => {
       const index = y * COLS + x;
@@ -787,6 +967,7 @@
     });
     state.nextGrid.fill(0);
     state.population = countPopulation(state.grid);
+    recordHistory('preset');
     updateStats();
     draw();
   }
@@ -1678,20 +1859,23 @@
     // 弹窗打开期间只允许编辑参数，游戏快捷键不会改变场地或播放状态。
     if (els.mutationModal.classList.contains('is-open')
       || els.renameModal.classList.contains('is-open')
-      || els.shapeManagerModal.classList.contains('is-open')) return;
+      || els.shapeManagerModal.classList.contains('is-open')
+      || els.editorModal.classList.contains('is-open')) return;
 
     const tag = event.target?.tagName;
-    const isEditable = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+    const isEditable = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || event.target?.isContentEditable;
     if (isEditable) return;
 
     const key = event.key.toLowerCase();
     if (event.code === 'Space') {
       event.preventDefault();
-      toggleRunning();
-    } else if (key === 'n') {
+      if (!event.repeat) toggleRunning();
+    } else if (event.key === 'ArrowLeft') {
       event.preventDefault();
-      if (state.running) stopRunning();
-      step();
+      backwardOne();
+    } else if (key === 'n' || event.key === 'ArrowRight') {
+      event.preventDefault();
+      forwardOne();
     } else if (key === 'r') {
       event.preventDefault();
       randomize();

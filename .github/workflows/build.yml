@@ -80,8 +80,9 @@ jobs:
           set -euo pipefail
           node --check web/js/script.js
           node --check web/js/platform.js
+          node --check web/js/history.js
           node --check electron/main.cjs
-          echo "三个脚本语法检查通过"
+          echo "四个脚本语法检查通过"
 
   # ---------------------------------------------------------------- Electron 免安装版
   electron:
@@ -146,17 +147,31 @@ jobs:
 
       - name: 收集安装包与免安装版
         shell: bash
+        env:
+          VERSION: ${{ needs.verify.outputs.version }}
         run: |
           set -euo pipefail
           mkdir -p out
           shopt -s nullglob
-          nsis=(src-tauri/target/release/bundle/nsis/*-setup.exe)
-          msi=(src-tauri/target/release/bundle/msi/*.msi)
+          # 只匹配本次版本的文件：target/ 可能被 rust-cache 缓存，用通配符会捡到旧版本的产物。
+          nsis=(src-tauri/target/release/bundle/nsis/*_"${VERSION}"_x64-setup.exe)
+          msi=(src-tauri/target/release/bundle/msi/*_"${VERSION}"_x64*.msi)
           [ "${#nsis[@]}" -eq 1 ] || { echo "::error::NSIS 产物数量异常：${#nsis[@]}"; exit 1; }
-          [ "${#msi[@]}" -eq 1 ] || { echo "::error::MSI 产物数量异常：${#msi[@]}"; exit 1; }
+          [ "${#msi[@]}" -le 1 ] || { echo "::error::MSI 产物数量异常：${#msi[@]}"; exit 1; }
+
+          # MSI 只在「无预发布后缀」或「预发布标识是纯数字」时才可能生成，见 scripts/tauri-build.cjs。
+          suffix="${VERSION#*-}"
+          if [ "$VERSION" = "$suffix" ] || [[ "$suffix" =~ ^[0-9]+$ ]]; then
+            [ "${#msi[@]}" -eq 1 ] || { echo "::error::版本 $VERSION 应当生成 MSI，但没有找到"; exit 1; }
+          elif [ "${#msi[@]}" -eq 1 ]; then
+            echo "::notice::版本 $VERSION 意外生成了 MSI，仍然一并交付"
+          else
+            echo "::notice::版本 $VERSION 的预发布标识不是纯数字，MSI 按预期未生成，本次只交付 NSIS"
+          fi
+
           # 打包出来的文件名是中文产品名，这里先改成中性名，交付名留到 Release 环节拼。
           cp "${nsis[0]}" out/tauri-setup.exe
-          cp "${msi[0]}" out/tauri.msi
+          [ "${#msi[@]}" -eq 0 ] || cp "${msi[0]}" out/tauri.msi
           # Tauri 的裸 exe 本身自带全部依赖（只依赖系统 WebView2），可以当免安装版直接双击运行。
           bare=src-tauri/target/release/conway-life.exe
           [ -f "$bare" ] || { echo "::error::没有生成 $bare"; exit 1; }
@@ -190,13 +205,20 @@ jobs:
           VERSION: ${{ needs.verify.outputs.version }}
         run: |
           set -euo pipefail
+          shopt -s nullglob
           mkdir -p release
           cp downloaded/electron-portable/Conway-Life-*-Windows-x64.exe "release/Conway-Life-${VERSION}-Windows-x64.exe"
           cp downloaded/tauri-bundles/tauri-portable.exe "release/Conway-Life-${VERSION}-Tauri-Windows-x64-portable.exe"
           cp downloaded/tauri-bundles/tauri-setup.exe "release/Conway-Life-${VERSION}-Tauri-Windows-x64-setup.exe"
-          cp downloaded/tauri-bundles/tauri.msi "release/Conway-Life-${VERSION}-Tauri-Windows-x64.msi"
+          # 预发布标识不是纯数字时不会有 MSI（见 scripts/tauri-build.cjs），这里按可选处理。
+          if [ -f downloaded/tauri-bundles/tauri.msi ]; then
+            cp downloaded/tauri-bundles/tauri.msi "release/Conway-Life-${VERSION}-Tauri-Windows-x64.msi"
+          else
+            echo "本次没有 MSI 产物，只交付 Electron 免安装版、Tauri 免安装版和 NSIS。"
+          fi
           cd release
-          sha256sum ./*.exe ./*.msi > "Conway-Life-${VERSION}-SHA256SUMS.txt"
+          files=(./*.exe ./*.msi)
+          sha256sum "${files[@]}" > "Conway-Life-${VERSION}-SHA256SUMS.txt"
           cat "Conway-Life-${VERSION}-SHA256SUMS.txt"
           sha256sum -c "Conway-Life-${VERSION}-SHA256SUMS.txt"
           ls -l
@@ -209,15 +231,22 @@ jobs:
           set -euo pipefail
           tag="v${VERSION}"
           repo="${GITHUB_REPOSITORY}"
+          # 版本号带 - 后缀（如 1.6.0-beta）按预发布处理，避免 Beta 顶掉正式版成为 Latest。
+          prerelease_arg=()
+          case "$VERSION" in
+            *-*) prerelease_arg=(--prerelease) ;;
+          esac
           if gh release view "$tag" --repo "$repo" >/dev/null 2>&1; then
             # 同一个标签重跑时用 --clobber 覆盖同名附件，保证附件一定是本次构建的。
             echo "Release $tag 已存在，覆盖上传附件"
             gh release upload "$tag" release/* --repo "$repo" --clobber
+            gh release edit "$tag" --repo "$repo" "${prerelease_arg[@]+"${prerelease_arg[@]}"}"
           else
             gh release create "$tag" release/* \
               --repo "$repo" \
               --verify-tag \
               --title "康威生命游戏 $tag" \
-              --notes-file "docs/releases/${tag}.md"
+              --notes-file "docs/releases/${tag}.md" \
+              "${prerelease_arg[@]+"${prerelease_arg[@]}"}"
           fi
           gh release view "$tag" --repo "$repo" --json tagName,isDraft,isPrerelease,url,assets

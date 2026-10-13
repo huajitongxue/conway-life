@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="theme-color" content="#07131a">
-  <title>康威生命游戏</title>
+  <title>康威生命游戏 · 历史回放 Beta</title>
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
@@ -71,9 +71,17 @@
         </div>
 
         <div class="actions-row">
+          <div class="history-controls" aria-label="历史回放">
+            <div class="history-heading"><span class="beta-badge">历史回放 Beta</span><span id="historyPosition">历史位置 0 / 0</span></div>
+            <div class="action-group history-actions">
+              <button id="backButton" type="button" disabled title="暂停并恢复上一条记录（←）">倒退一步</button>
+              <button id="reverseButton" class="toggle-button" type="button" disabled aria-pressed="false">◀ 倒放</button>
+            </div>
+            <div class="history-status"><span id="historyCounts">可倒退 0 · 可前进 0</span><span id="historyMode">暂停 · 起点</span></div>
+          </div>
           <div class="action-group primary-actions">
             <button id="playButton" class="play-button" type="button">▶ 播放</button>
-            <button id="stepButton" type="button">单步</button>
+            <button id="stepButton" type="button" title="暂停并恢复下一条记录，最新位置执行新一代（→ / N）">前进一步</button>
             <button id="clearButton" class="danger-button" type="button">清空</button>
             <button id="randomButton" type="button">随机</button>
           </div>
@@ -84,7 +92,7 @@
           </div>
         </div>
 
-        <p class="key-help"><kbd>Space</kbd> 播放/暂停 · <kbd>N</kbd> 单步 · <kbd>R</kbd> 随机 · <kbd>C</kbd> 清空</p>
+        <p class="key-help"><kbd>Space</kbd> 播放/暂停 · <kbd>←</kbd> 倒退 · <kbd>→</kbd>/<kbd>N</kbd> 前进 · <kbd>R</kbd> 随机 · <kbd>C</kbd> 清空</p>
       </aside>
     </section>
   </main>
@@ -200,7 +208,9 @@
     </div>
   </div>
 
-  <div class="toast" id="toast" role="status" aria-live="polite"></div>  <script src="js/platform.js"></script>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script src="js/platform.js"></script>
+  <script src="js/history.js"></script>
   <script src="js/script.js"></script>
 </body>
 </html>
