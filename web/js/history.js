@@ -78,7 +78,32 @@
       };
     }
 
-    return { reset, append, backward: () => move(-1), forward: () => move(1), status };
+    function exportTimeline() {
+      return {
+        dropped,
+        entries: Array.from({ length }, (_, index) => {
+          const entry = entryAt(index);
+          return { operation: entry.operation, snapshot: copySnapshot(entry.snapshot) };
+        })
+      };
+    }
+
+    function replaceTimeline(timeline) {
+      if (!timeline.entries.length || timeline.entries.length > capacity) throw new RangeError('回放记录数超出容量');
+      // 先完成副本准备，失败时保持旧历史；调用方先用编解码模块验证数据。
+      const prepared = timeline.entries.map((entry) => ({
+        operation: entry.operation, snapshot: copySnapshot(entry.snapshot)
+      }));
+      entries.fill(undefined);
+      head = 0;
+      length = prepared.length;
+      cursor = 0;
+      dropped = timeline.dropped;
+      prepared.forEach((entry, index) => { entries[index] = entry; });
+      return copySnapshot(entries[0].snapshot);
+    }
+
+    return { reset, append, backward: () => move(-1), forward: () => move(1), status, exportTimeline, replaceTimeline };
   }
 
   globalThis.CONWAY_HISTORY = { create, fields: Object.freeze(fields) };

@@ -37,6 +37,13 @@
     population: 0,
     running: false,
     playDirection: 'forward',
+    reverseReadonly: false,
+    replayIoBusy: false,
+    replayIoKind: null,
+    replayIoId: 0,
+    replayReading: false,
+    replayResume: null,
+    pendingReplay: null,
     speed: 10,
     boundary: 'wrap',
     showGrid: true,
@@ -77,6 +84,14 @@
     stepButton: document.getElementById('stepButton'),
     backButton: document.getElementById('backButton'),
     reverseButton: document.getElementById('reverseButton'),
+    exitReverseButton: document.getElementById('exitReverseButton'),
+    exportReplayButton: document.getElementById('exportReplayButton'),
+    importReplayButton: document.getElementById('importReplayButton'),
+    importReplayInput: document.getElementById('importReplayInput'),
+    replayConfirmModal: document.getElementById('replayConfirmModal'),
+    replayConfirmMessage: document.getElementById('replayConfirmMessage'),
+    confirmReplayButton: document.getElementById('confirmReplayButton'),
+    cancelReplayButton: document.getElementById('cancelReplayButton'),
     historyPosition: document.getElementById('historyPosition'),
     historyCounts: document.getElementById('historyCounts'),
     historyMode: document.getElementById('historyMode'),
@@ -97,6 +112,22 @@
     clearEditorButton: document.getElementById('clearEditorButton'),
     saveEditorButton: document.getElementById('saveEditorButton'),
     mutationModal: document.getElementById('mutationModal'),
+    mutationFields: document.getElementById('mutationFields'),
+    mutationLockHelp: document.getElementById('mutationLockHelp'),
+    showKeysSetting: document.getElementById('showKeysSetting'),
+    showStageHintSetting: document.getElementById('showStageHintSetting'),
+    coordinatesSetting: document.getElementById('coordinatesSetting'),
+    keyHelp: document.getElementById('keyHelp'),
+    stageHint: document.getElementById('stageHint'),
+    coordinateValue: document.getElementById('coordinateValue'),
+    magnifierPanel: document.getElementById('magnifierPanel'),
+    magnifierCanvas: document.getElementById('magnifierCanvas'),
+    magnifierEmpty: document.getElementById('magnifierEmpty'),
+    closeMagnifierButton: document.getElementById('closeMagnifierButton'),
+    magnificationRange: document.getElementById('magnificationRange'),
+    magnificationValue: document.getElementById('magnificationValue'),
+    zoomInButton: document.getElementById('zoomInButton'),
+    zoomOutButton: document.getElementById('zoomOutButton'),
     closeMutationButton: document.getElementById('closeMutationButton'),
     cancelMutationButton: document.getElementById('cancelMutationButton'),
     saveMutationButton: document.getElementById('saveMutationButton'),
@@ -127,6 +158,129 @@
     renameError: document.getElementById('renameError'),
     toast: document.getElementById('toast')
   };
+
+  const viewTools = globalThis.CONWAY_VIEW.create({ canvas: gameCanvas, cols: COLS, rows: ROWS,
+    els, blocked: modalOpen, showToast });
+
+  function modalOpen() {
+    return state.replayIoBusy || [els.mutationModal, els.renameModal, els.shapeManagerModal, els.editorModal,
+      els.replayConfirmModal].some((modal) => modal.classList.contains('is-open'));
+  }
+
+  function boardLocked() {
+    return state.reverseReadonly || state.replayIoBusy;
+  }
+
+  // ===== 回放文件 =====
+  function beginReplayIo(kind) {
+    finishGameDrawing(false);
+    ensureHistory();
+    state.replayResume = { running: state.running, direction: state.playDirection };
+    stopRunning();
+    state.replayIoBusy = true;
+    state.replayIoKind = kind;
+    state.replayIoId += 1;
+    state.replayReading = false;
+    state.historyNavigationId += 1;
+    state.preview = null;
+    viewTools.clearKeys();
+    updatePlayButtons();
+    draw();
+  }
+
+  function finishReplayIo(resume) {
+    const previous = state.replayResume;
+    state.replayIoBusy = false;
+    state.replayIoKind = null;
+    state.replayIoId += 1;
+    state.replayReading = false;
+    state.replayResume = null;
+    state.pendingReplay = null;
+    els.replayConfirmModal.classList.remove('is-open');
+    updatePlayButtons();
+    viewTools.scheduleDraw();
+    if (resume && previous?.running) startRunning(previous.direction);
+  }
+
+  async function exportReplay() {
+    if (state.replayIoBusy) return;
+    beginReplayIo('export');
+    try {
+      const bytes = globalThis.CONWAY_REPLAY.encode(history.exportTimeline(), COLS, ROWS);
+      const name = 'conway-life-replay-' + dateStamp(new Date()) + '-' + Date.now() + '.conway-replay';
+      if (canSaveWithDialog()) {
+        const path = await globalThis.__TAURI__.core.invoke('export_replay_file', bytes, {
+          headers: { 'x-conway-filename': name }
+        });
+        showToast(path ? '已保存到 ' + path : '已取消导出');
+      } else {
+        const blob = new Blob([bytes], { type: 'application/octet-stream' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = name;
+        link.style.display = 'none';
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        window.setTimeout(() => URL.revokeObjectURL(url), 5000);
+        showToast('已导出回放文件');
+      }
+    } catch (error) {
+      showToast('回放导出失败：' + (error?.message || String(error)));
+    } finally {
+      finishReplayIo(true);
+    }
+  }
+
+  function chooseReplayFile() {
+    if (boardLocked()) return;
+    beginReplayIo('import');
+    try { els.importReplayInput.click(); }
+    catch (error) { showToast('无法选择回放文件'); finishReplayIo(true); }
+  }
+
+  async function importReplayFile(file) {
+    if (state.reverseReadonly || (state.replayIoBusy && state.replayIoKind !== 'import')) return;
+    if (state.replayReading || state.pendingReplay) return;
+    if (!file) { if (state.replayIoKind === 'import') finishReplayIo(true); return; }
+    if (!state.replayIoBusy) beginReplayIo('import');
+    const operationId = state.replayIoId;
+    state.replayReading = true;
+    try {
+      if (file.size > globalThis.CONWAY_REPLAY.MAX_BYTES) throw new Error('回放文件超过 80 MiB');
+      const bytes = await file.arrayBuffer();
+      if (operationId !== state.replayIoId || state.replayIoKind !== 'import') return;
+      state.pendingReplay = globalThis.CONWAY_REPLAY.decode(bytes, COLS, ROWS, history.status().capacity);
+      state.replayReading = false;
+      els.replayConfirmMessage.textContent = '将用 ' + state.pendingReplay.entries.length
+        + ' 条记录替换当前场地和历史，导入后暂停在最早记录。预设库和永久设置保持不变。';
+      els.replayConfirmModal.classList.add('is-open');
+      els.cancelReplayButton.focus();
+    } catch (error) {
+      if (operationId !== state.replayIoId) return;
+      showToast('回放导入失败：' + (error?.message || String(error)));
+      finishReplayIo(true);
+    }
+  }
+
+  function cancelReplayImport() {
+    if (state.replayIoKind !== 'import') return;
+    finishReplayIo(true);
+  }
+
+  function confirmReplayImport() {
+    if (state.replayIoKind !== 'import' || !state.pendingReplay) return;
+    try {
+      const first = history.replaceTimeline(state.pendingReplay);
+      restoreHistory(first);
+      finishReplayIo(false);
+      showToast('已导入回放，暂停在最早记录');
+    } catch (error) {
+      showToast('回放导入失败：' + (error?.message || String(error)));
+      finishReplayIo(true);
+    }
+  }
 
   // ===== 系统预设 =====
   const SYSTEM_PRESETS = {
@@ -178,6 +332,7 @@
   function init() {
     loadCustomPresets();
     loadMutationSettings();
+    viewTools.loadPreferences();
     ensureHistory();
     bindEvents();
     resizeCanvases();
@@ -196,12 +351,27 @@
       observer.observe(editorCanvas.parentElement);
     }
     document.addEventListener('keydown', handleKeydown);
+    viewTools.bind();
     window.addEventListener('blur', () => finishGameDrawing(false));
 
     els.playButton.addEventListener('click', toggleRunning);
     els.stepButton.addEventListener('click', forwardOne);
     els.backButton.addEventListener('click', backwardOne);
     els.reverseButton.addEventListener('click', toggleReverse);
+    els.exitReverseButton.addEventListener('click', exitReverse);
+    els.exportReplayButton.addEventListener('click', exportReplay);
+    els.importReplayButton.addEventListener('click', chooseReplayFile);
+    els.importReplayInput.addEventListener('change', () => {
+      const file = els.importReplayInput.files?.[0] || null;
+      els.importReplayInput.value = '';
+      importReplayFile(file);
+    });
+    els.importReplayInput.addEventListener('cancel', cancelReplayImport);
+    els.cancelReplayButton.addEventListener('click', cancelReplayImport);
+    els.confirmReplayButton.addEventListener('click', confirmReplayImport);
+    els.replayConfirmModal.addEventListener('click', (event) => {
+      if (event.target === els.replayConfirmModal) cancelReplayImport();
+    });
     els.clearButton.addEventListener('click', () => clearBoard(true));
     els.randomButton.addEventListener('click', randomize);
     els.boundaryButton.addEventListener('click', toggleBoundary);
@@ -283,6 +453,7 @@
   }
 
   function recordHistory(operation) {
+    if (boardLocked()) return false;
     const hadFuture = history.status().forward > 0;
     const changed = history.append(snapshotState(), operation);
     // 从历史中编辑出新分支后，正放立即转为实时演化。
@@ -313,6 +484,7 @@
   }
 
   function backwardOne() {
+    if (state.replayIoBusy) return;
     finishGameDrawing(false);
     stopRunning();
     ensureHistory();
@@ -320,15 +492,28 @@
   }
 
   function forwardOne() {
+    if (state.replayIoBusy) return;
     finishGameDrawing(false);
     stopRunning();
     step();
   }
 
   function toggleReverse() {
+    if (state.replayIoBusy) return;
     finishGameDrawing(false);
     if (state.running && state.playDirection === 'reverse') stopRunning();
     else startRunning('reverse');
+  }
+
+  function exitReverse() {
+    if (state.replayIoBusy) return;
+    stopRunning();
+    state.reverseReadonly = false;
+    state.historyNavigationId += 1;
+    state.preview = null;
+    state.presetDrag = null;
+    updatePlayButtons();
+    draw();
   }
 
   function playbackTick() {
@@ -342,13 +527,15 @@
   }
 
   function prepareBoardEdit() {
+    if (boardLocked()) return false;
     finishGameDrawing(false);
     ensureHistory();
-    if (state.running && state.playDirection === 'reverse') stopRunning();
+    return true;
   }
 
   // ===== 游戏逻辑 =====
   function step() {
+    if (state.replayIoBusy) return;
     finishGameDrawing(false);
     ensureHistory();
     if (history.status().forward) {
@@ -356,6 +543,7 @@
       if (state.running && !history.status().forward) restartMutationTimer();
       return;
     }
+    if (state.reverseReadonly) return;
     const source = state.grid;
     const target = state.nextGrid;
     let population = 0;
@@ -402,14 +590,24 @@
   }
 
   function toggleRunning() {
+    if (state.replayIoBusy) return;
     finishGameDrawing(false);
     if (state.running) stopRunning();
-    else startRunning();
+    else startRunning(state.reverseReadonly ? 'reverse' : 'forward');
   }
 
   function startRunning(direction = 'forward') {
+    if (state.replayIoBusy) return;
     finishGameDrawing(false);
     ensureHistory();
+    if (direction === 'reverse') {
+      state.reverseReadonly = true;
+      state.historyNavigationId += 1;
+      state.preview = null;
+      state.presetDrag = null;
+      draw();
+    }
+    if (state.reverseReadonly) direction = 'reverse';
     if (direction === 'reverse' && !history.status().backward) { stopRunning(); return; }
     state.playDirection = direction;
     state.running = true;
@@ -444,7 +642,7 @@
   function restartMutationTimer() {
     if (state.mutationTimerId !== null) window.clearInterval(state.mutationTimerId);
     state.mutationTimerId = null;
-    if (state.running && state.playDirection === 'forward' && !history.status().forward && state.mutationEnabled) {
+    if (!boardLocked() && state.running && state.playDirection === 'forward' && !history.status().forward && state.mutationEnabled) {
       const timerId = window.setInterval(() => {
         if (state.mutationTimerId === timerId) applyMutations();
       }, 1000);
@@ -454,7 +652,7 @@
 
   function updatePlayButtons() {
     const isRunning = state.running;
-    els.playButton.textContent = isRunning ? 'Ⅱ 暂停' : '▶ 播放';
+    els.playButton.textContent = isRunning ? 'Ⅱ 暂停' : state.reverseReadonly ? '◀ 继续倒放' : '▶ 播放';
     els.playButton.classList.toggle('is-running', isRunning);
     els.playButton.classList.toggle('is-paused', !isRunning);
     const position = history.status();
@@ -464,13 +662,25 @@
     els.reverseButton.textContent = reversing ? 'Ⅱ 停止倒放' : '◀ 倒放';
     els.reverseButton.classList.toggle('is-active', reversing);
     els.reverseButton.setAttribute('aria-pressed', String(reversing));
+    els.exitReverseButton.hidden = !state.reverseReadonly;
+    els.clearButton.disabled = boardLocked();
+    els.randomButton.disabled = boardLocked();
+    els.boundaryButton.disabled = boardLocked();
+    els.stepButton.disabled = state.replayIoBusy || (state.reverseReadonly && !position.forward);
+    els.importReplayButton.disabled = boardLocked();
+    els.exportReplayButton.disabled = state.replayIoBusy;
+    els.playButton.disabled = state.replayIoBusy || (state.reverseReadonly && !isRunning && !position.backward);
+    els.backButton.disabled = state.replayIoBusy || !position.backward;
+    els.reverseButton.disabled = state.replayIoBusy || (!position.backward && !reversing);
+    els.exitReverseButton.disabled = state.replayIoBusy;
     els.historyPosition.textContent = `历史位置 ${Math.max(0, position.cursor)} / ${Math.max(0, position.length - 1)}`;
     els.historyCounts.textContent = `可倒退 ${position.backward} · 可前进 ${position.forward}`;
     const mode = state.drawing ? '绘制中' : !isRunning ? '暂停'
       : reversing ? '倒放中' : position.forward ? '历史重播' : '演化中';
     const operations = { initial: '起点', evolution: '演化', mutation: '突变', draw: '绘制',
       erase: '擦除', preset: '预设放置', clear: '清空', random: '随机', boundary: '边界切换', settings: '突变设置' };
-    els.historyMode.textContent = `${mode} · ${operations[position.operation] || '历史状态'}${position.dropped ? ' · 早期记录已淘汰' : ''}`;
+    els.historyMode.textContent = (state.reverseReadonly ? '倒放只读 · ' : '') + (state.replayIoBusy ? '文件处理中 · ' : '') + mode
+      + ' · ' + (operations[position.operation] || '历史状态') + (position.dropped ? ' · 早期记录已淘汰' : '');
   }
 
   function setSpeed(value) {
@@ -481,7 +691,7 @@
   }
 
   function clearBoard(resetGeneration) {
-    prepareBoardEdit();
+    if (!prepareBoardEdit()) return;
     state.grid.fill(0);
     state.nextGrid.fill(0);
     state.cellAges.fill(0);
@@ -494,7 +704,7 @@
   }
 
   function randomize() {
-    prepareBoardEdit();
+    if (!prepareBoardEdit()) return;
     if (state.running) stopRunning();
     for (let i = 0; i < state.grid.length; i += 1) {
       state.grid[i] = Math.random() < RANDOM_DENSITY ? 1 : 0;
@@ -509,7 +719,7 @@
   }
 
   function toggleBoundary() {
-    prepareBoardEdit();
+    if (!prepareBoardEdit()) return;
     state.boundary = state.boundary === 'wrap' ? 'finite' : 'wrap';
     recordHistory('boundary');
     updateStats();
@@ -574,17 +784,26 @@
   }
 
   function updateMutationButton() {
-    els.mutationButton.textContent = `细胞突变：${state.mutationEnabled ? '开' : '关'}`;
+    els.mutationButton.textContent = '设置';
+    els.mutationButton.title = '细胞突变：' + (state.mutationEnabled ? '开' : '关');
     els.mutationButton.classList.toggle('is-active', state.mutationEnabled);
   }
 
   function openMutationSettings() {
+    if (state.replayIoBusy) return;
     if (els.mutationModal.classList.contains('is-open')) return;
     finishGameDrawing(false);
     ensureHistory();
     state.mutationResumeRunning = state.running;
     state.mutationResumeDirection = state.playDirection;
     if (state.running) stopRunning();
+    viewTools.clearKeys();
+    const preferences = viewTools.preferences;
+    els.showKeysSetting.checked = preferences.showKeys;
+    els.showStageHintSetting.checked = preferences.showStageHint;
+    els.coordinatesSetting.checked = preferences.coordinates;
+    els.mutationFields.disabled = state.reverseReadonly;
+    els.mutationLockHelp.hidden = !state.reverseReadonly;
     els.mutationEnabled.checked = state.mutationEnabled;
     els.mutationPreferStable.checked = state.mutationPreferStable;
     els.mutationCount.value = String(state.mutationCount);
@@ -609,32 +828,37 @@
   }
 
   function saveMutationSettings() {
+    if (state.replayIoBusy) return;
+    viewTools.savePreferences({ ...viewTools.preferences, showKeys: els.showKeysSetting.checked,
+      showStageHint: els.showStageHintSetting.checked, coordinates: els.coordinatesSetting.checked });
     ensureHistory();
     const before = globalThis.CONWAY_HISTORY.fields
       .filter((field) => field.startsWith('mutation'))
       .map((field) => state[field]);
-    state.mutationCount = clampInt(els.mutationCount.value, 1, 1000, 10);
-    state.mutationProbability = clamp(Number(els.mutationProbability.value) / 100, 0, 1, 0.1);
-    const movePercent = clampInt(els.mutationRatioRange.value, 0, 100, 50);
-    state.mutationDeathRatio = (100 - movePercent) / 100;
-    state.mutationMoveRatio = movePercent / 100;
-    state.mutationPreferStable = els.mutationPreferStable.checked;
-    state.mutationEnabled = els.mutationEnabled.checked;
-    const changed = globalThis.CONWAY_HISTORY.fields
-      .filter((field) => field.startsWith('mutation'))
-      .some((field, index) => state[field] !== before[index]);
-    if (changed) {
-      recordHistory('settings');
-      if (state.mutationResumeDirection === 'reverse') state.mutationResumeRunning = false;
+    if (!state.reverseReadonly) {
+      state.mutationCount = clampInt(els.mutationCount.value, 1, 1000, 10);
+      state.mutationProbability = clamp(Number(els.mutationProbability.value) / 100, 0, 1, 0.1);
+      const movePercent = clampInt(els.mutationRatioRange.value, 0, 100, 50);
+      state.mutationDeathRatio = (100 - movePercent) / 100;
+      state.mutationMoveRatio = movePercent / 100;
+      state.mutationPreferStable = els.mutationPreferStable.checked;
+      state.mutationEnabled = els.mutationEnabled.checked;
+      const changed = globalThis.CONWAY_HISTORY.fields
+        .filter((field) => field.startsWith('mutation'))
+        .some((field, index) => state[field] !== before[index]);
+      if (changed) {
+        recordHistory('settings');
+        persistMutationSettings();
+      }
     }
-    persistMutationSettings();
     updateMutationButton();
     restartMutationTimer();
     closeMutationSettings(true);
-    showToast(state.mutationEnabled ? '已启用细胞突变' : '已关闭细胞突变');
+    showToast('设置已保存');
   }
 
   function applyMutations() {
+    if (boardLocked()) return;
     if (!state.running || state.playDirection !== 'forward' || history.status().forward
       || state.drawing || !state.mutationEnabled || state.population === 0) return;
     ensureHistory();
@@ -738,6 +962,7 @@
   function bindGameCanvasEvents() {
     gameCanvas.addEventListener('contextmenu', (event) => event.preventDefault());
     gameCanvas.addEventListener('pointerdown', (event) => {
+      if (boardLocked()) return;
       if (state.drawing || (event.button !== 0 && event.button !== 2)) return;
       event.preventDefault();
       const cell = canvasToCell(gameCanvas, event.clientX, event.clientY);
@@ -751,6 +976,7 @@
       setCell(cell.x, cell.y, state.drawing.value);
     });
     gameCanvas.addEventListener('pointermove', (event) => {
+      if (boardLocked()) return;
       if (!state.drawing || event.pointerId !== state.drawing.pointerId) return;
       const cell = canvasToCell(gameCanvas, event.clientX, event.clientY);
       if (cell) setCell(cell.x, cell.y, state.drawing.value);
@@ -773,6 +999,7 @@
   }
 
   function setCell(x, y, value) {
+    if (boardLocked()) return;
     const index = y * COLS + x;
     if (state.grid[index] === value) return;
     if (!state.drawing) prepareBoardEdit();
@@ -797,6 +1024,7 @@
   }
 
   function draw() {
+    viewTools.scheduleDraw();
     const { width, height } = state.gameView;
     if (!width || !height) return;
     gameCtx.clearRect(0, 0, width, height);
@@ -899,6 +1127,7 @@
 
   function bindPresetPointer(card, entry) {
     card.addEventListener('pointerdown', (event) => {
+      if (boardLocked()) return;
       if (event.target.closest('button')) return;
       if (event.button !== 0) return;
       event.preventDefault();
@@ -933,7 +1162,7 @@
         const cell = canvasToCell(gameCanvas, finishEvent.clientX, finishEvent.clientY);
         // 回看已经换了场地，旧拖拽不能再往恢复后的状态放置。
         const sameScene = navigationId === state.historyNavigationId;
-        if (sameScene && finishEvent.type === 'pointerup' && dragging && cell) {
+        if (!boardLocked() && sameScene && finishEvent.type === 'pointerup' && dragging && cell) {
           placePattern(pattern, cell.x, cell.y, false);
           showToast(`已放置${pattern.label}`);
         } else if (sameScene && finishEvent.type === 'pointerup' && !dragging) {
@@ -952,7 +1181,7 @@
   }
 
   function placePattern(pattern, anchorX, anchorY, clearFirst) {
-    prepareBoardEdit();
+    if (!prepareBoardEdit()) return;
     if (clearFirst) {
       // 清空并放置属于同一次操作，不能产生中间的空白历史。
       state.grid.fill(0);
@@ -993,10 +1222,10 @@
       const name = document.createElement('span');
       name.className = 'preset-name';
       name.textContent = entry.label;
+      name.title = entry.label;
       const kind = document.createElement('span');
       kind.className = 'preset-kind';
       kind.textContent = entry.type === 'system' ? '系统' : '自定义';
-      cardTop.append(name, kind);
 
       const transformControls = document.createElement('div');
       transformControls.className = 'preset-transform-controls';
@@ -1007,17 +1236,20 @@
 
       const footer = document.createElement('div');
       footer.className = 'preset-card-footer';
+      footer.append(name);
       if (entry.type === 'system') {
         const systemLabel = document.createElement('span');
         systemLabel.className = 'preset-system-label';
         systemLabel.textContent = '系统预设';
-        footer.append(systemLabel);
+        cardTop.append(systemLabel);
       } else {
-        footer.append(
+        cardTop.append(kind);
+        cardTop.append(
           makePresetTextButton('rename-preset', '改名', `重命名${entry.label}`, () => openRenameModal(entry.id)),
           makePresetTextButton('delete-preset', '删除', `删除${entry.label}`, () => deletePreset(entry.id))
         );
       }
+      cardTop.append(transformControls);
 
       if (state.presetSelectionMode) {
         const selected = state.selectedPresetKeys.has(entry.key);
@@ -1036,7 +1268,7 @@
         card.append(cardTop, thumb, check, footer);
         bindPresetSelection(card, entry, check);
       } else {
-        card.append(cardTop, thumb, transformControls, footer);
+        card.append(cardTop, thumb, footer);
         bindPresetPointer(card, entry);
       }
       els.presetLibrary.appendChild(card);
@@ -1169,6 +1401,7 @@
 
   // ===== 重命名自定义预设 =====
   function openRenameModal(id) {
+    viewTools.clearKeys();
     const preset = state.customPresets.find((item) => item.id === id);
     if (!preset) return;
 
@@ -1462,6 +1695,7 @@
 
   // ===== 形状管理弹窗 =====
   function openShapeManager() {
+    viewTools.clearKeys();
     if (els.shapeManagerModal.classList.contains('is-open')) return;
     renderShapeManager();
     els.shapeManagerModal.classList.add('is-open');
@@ -1606,6 +1840,7 @@
   }
 
   function showEditor() {
+    viewTools.clearKeys();
     closeShapeManager();
     drawEditor();
     els.editorModal.classList.add('is-open');
@@ -1833,6 +2068,9 @@
   }
 
   function handleKeydown(event) {
+    if (event.key === 'Escape' && els.replayConfirmModal.classList.contains('is-open')) {
+      cancelReplayImport(); return;
+    }
     if (event.key === 'Escape') {
       if (els.mutationModal.classList.contains('is-open')) {
         cancelMutationSettings();
@@ -1857,14 +2095,13 @@
     }
 
     // 弹窗打开期间只允许编辑参数，游戏快捷键不会改变场地或播放状态。
-    if (els.mutationModal.classList.contains('is-open')
-      || els.renameModal.classList.contains('is-open')
-      || els.shapeManagerModal.classList.contains('is-open')
-      || els.editorModal.classList.contains('is-open')) return;
+    if (modalOpen()) return;
 
     const tag = event.target?.tagName;
     const isEditable = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || event.target?.isContentEditable;
     if (isEditable) return;
+    if (viewTools.handleKeydown(event)) return;
+    if (event.ctrlKey || event.metaKey || event.altKey) return;
 
     const key = event.key.toLowerCase();
     if (event.code === 'Space') {

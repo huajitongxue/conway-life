@@ -21,6 +21,8 @@ function registerLocalPages() {
     ['/css/style.css', 'web/css/style.css'],
     ['/js/platform.js', 'web/js/platform.js'],
     ['/js/history.js', 'web/js/history.js'],
+    ['/js/replay.js', 'web/js/replay.js'],
+    ['/js/view.js', 'web/js/view.js'],
     ['/js/script.js', 'web/js/script.js']
   ]);
 
