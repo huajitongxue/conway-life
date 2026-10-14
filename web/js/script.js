@@ -68,6 +68,8 @@
     presetSelectionMode: false,
     selectedPresetKeys: new Set(),
     renamingPresetId: null,
+    presetMenu: null,
+    presetMenuButton: null,
     presetDrag: null,
     historyNavigationId: 0,
     preview: null,
@@ -117,12 +119,14 @@
     showKeysSetting: document.getElementById('showKeysSetting'),
     showStageHintSetting: document.getElementById('showStageHintSetting'),
     coordinatesSetting: document.getElementById('coordinatesSetting'),
+    magnifierShortcutSetting: document.getElementById('magnifierShortcutSetting'),
     keyHelp: document.getElementById('keyHelp'),
     stageHint: document.getElementById('stageHint'),
     coordinateValue: document.getElementById('coordinateValue'),
     magnifierPanel: document.getElementById('magnifierPanel'),
     magnifierCanvas: document.getElementById('magnifierCanvas'),
     magnifierEmpty: document.getElementById('magnifierEmpty'),
+    magnifierShortcutHint: document.getElementById('magnifierShortcutHint'),
     closeMagnifierButton: document.getElementById('closeMagnifierButton'),
     magnificationRange: document.getElementById('magnificationRange'),
     magnificationValue: document.getElementById('magnificationValue'),
@@ -351,6 +355,11 @@
       observer.observe(editorCanvas.parentElement);
     }
     document.addEventListener('keydown', handleKeydown);
+    document.addEventListener('pointerdown', (event) => {
+      if (!state.presetMenu) return;
+      if (event.target === state.presetMenuButton || state.presetMenu.contains?.(event.target)) return;
+      closePresetActionMenu();
+    });
     viewTools.bind();
     window.addEventListener('blur', () => finishGameDrawing(false));
 
@@ -802,6 +811,7 @@
     els.showKeysSetting.checked = preferences.showKeys;
     els.showStageHintSetting.checked = preferences.showStageHint;
     els.coordinatesSetting.checked = preferences.coordinates;
+    els.magnifierShortcutSetting.checked = preferences.magnifierShortcut;
     els.mutationFields.disabled = state.reverseReadonly;
     els.mutationLockHelp.hidden = !state.reverseReadonly;
     els.mutationEnabled.checked = state.mutationEnabled;
@@ -830,7 +840,8 @@
   function saveMutationSettings() {
     if (state.replayIoBusy) return;
     viewTools.savePreferences({ ...viewTools.preferences, showKeys: els.showKeysSetting.checked,
-      showStageHint: els.showStageHintSetting.checked, coordinates: els.coordinatesSetting.checked });
+      showStageHint: els.showStageHintSetting.checked, coordinates: els.coordinatesSetting.checked,
+      magnifierShortcut: els.magnifierShortcutSetting.checked });
     ensureHistory();
     const before = globalThis.CONWAY_HISTORY.fields
       .filter((field) => field.startsWith('mutation'))
@@ -1089,14 +1100,47 @@
   }
 
   function getTransformedPattern(entry) {
-    const transform = state.presetTransforms[entry.key] || { flipX: false, flipY: false };
+    const transform = state.presetTransforms[entry.key];
+    if (transform) {
+      return {
+        ...entry,
+        width: transform.width,
+        height: transform.height,
+        cells: transform.cells.map(([x, y]) => [x, y])
+      };
+    }
     return {
       ...entry,
-      cells: entry.cells.map(([x, y]) => [
-        transform.flipX ? entry.width - 1 - x : x,
-        transform.flipY ? entry.height - 1 - y : y
-      ])
+      cells: entry.cells.map(([x, y]) => [x, y])
     };
+  }
+
+  function transformPattern(pattern, operation) {
+    if (operation === 'flipX') {
+      return {
+        ...pattern,
+        cells: pattern.cells.map(([x, y]) => [pattern.width - 1 - x, y])
+      };
+    }
+    if (operation === 'rotateCW') {
+      return {
+        ...pattern,
+        width: pattern.height,
+        height: pattern.width,
+        cells: pattern.cells.map(([x, y]) => [pattern.height - 1 - y, x])
+      };
+    }
+    return pattern;
+  }
+
+  function applyPresetTransform(entry, operation) {
+    const transformed = transformPattern(getTransformedPattern(entry), operation);
+    state.presetTransforms[entry.key] = {
+      width: transformed.width,
+      height: transformed.height,
+      cells: transformed.cells.map(([x, y]) => [x, y])
+    };
+    renderPresetLibrary();
   }
 
   function getPlacementCells(pattern, anchorX, anchorY) {
@@ -1202,6 +1246,7 @@
   }
 
   function renderPresetLibrary() {
+    closePresetActionMenu();
     els.presetLibrary.replaceChildren();
     const entries = getPresetEntries();
 
@@ -1227,16 +1272,23 @@
       kind.className = 'preset-kind';
       kind.textContent = entry.type === 'system' ? '系统' : '自定义';
 
-      const transformControls = document.createElement('div');
-      transformControls.className = 'preset-transform-controls';
-      transformControls.append(
-        makeTransformButton('左右翻转', '↔', entry, 'flipX'),
-        makeTransformButton('上下翻转', '↕', entry, 'flipY')
-      );
+      const menuToggle = document.createElement('button');
+      menuToggle.type = 'button';
+      menuToggle.className = 'preset-menu-toggle';
+      menuToggle.textContent = '+';
+      menuToggle.title = `打开${entry.label}操作菜单`;
+      menuToggle.setAttribute('aria-label', `打开${entry.label}操作菜单`);
+      menuToggle.setAttribute('aria-haspopup', 'menu');
+      menuToggle.addEventListener('pointerdown', (event) => event.stopPropagation());
+      menuToggle.addEventListener('click', (event) => {
+        event.stopPropagation();
+        openPresetActionMenu(entry, menuToggle);
+      });
 
       const footer = document.createElement('div');
       footer.className = 'preset-card-footer';
       footer.append(name);
+      if (!state.presetSelectionMode) cardTop.append(menuToggle);
       if (entry.type === 'system') {
         const systemLabel = document.createElement('span');
         systemLabel.className = 'preset-system-label';
@@ -1244,12 +1296,7 @@
         cardTop.append(systemLabel);
       } else {
         cardTop.append(kind);
-        cardTop.append(
-          makePresetTextButton('rename-preset', '改名', `重命名${entry.label}`, () => openRenameModal(entry.id)),
-          makePresetTextButton('delete-preset', '删除', `删除${entry.label}`, () => deletePreset(entry.id))
-        );
       }
-      cardTop.append(transformControls);
 
       if (state.presetSelectionMode) {
         const selected = state.selectedPresetKeys.has(entry.key);
@@ -1275,26 +1322,62 @@
     });
   }
 
-  function makePresetTextButton(className, text, ariaLabel, onClick) {
-    const control = document.createElement('span');
-    control.className = className;
-    control.textContent = text;
-    control.setAttribute('role', 'button');
-    control.setAttribute('tabindex', '0');
-    control.setAttribute('aria-label', ariaLabel);
-    control.addEventListener('pointerdown', (event) => event.stopPropagation());
-    control.addEventListener('click', (event) => {
-      event.stopPropagation();
-      onClick();
-    });
-    control.addEventListener('keydown', (event) => {
-      if (event.key === 'Enter' || event.key === ' ') {
-        event.preventDefault();
+  function closePresetActionMenu() {
+    if (!state.presetMenu) return;
+    state.presetMenu.remove?.();
+    state.presetMenu = null;
+    state.presetMenuButton = null;
+  }
+
+  function openPresetActionMenu(entry, anchor) {
+    if (state.presetMenuButton === anchor) {
+      closePresetActionMenu();
+      return;
+    }
+    closePresetActionMenu();
+
+    const menu = document.createElement('div');
+    menu.className = 'preset-action-menu';
+    menu.setAttribute('role', 'menu');
+    menu.setAttribute('aria-label', `${entry.label}操作`);
+    menu.addEventListener('pointerdown', (event) => event.stopPropagation());
+
+    const actions = [];
+    if (entry.type === 'system') {
+      actions.push({ label: '复制一份', action: () => duplicatePreset(entry) });
+    } else {
+      actions.push({ label: '改名', action: () => openRenameModal(entry.id) });
+      actions.push({ label: '删除', action: () => deletePreset(entry.id), danger: true });
+    }
+    actions.push({ label: '左右翻转', action: () => applyPresetTransform(entry, 'flipX') });
+    actions.push({ label: '顺时针旋转 90°', action: () => applyPresetTransform(entry, 'rotateCW') });
+
+    actions.forEach(({ label, action, danger }) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = danger ? 'preset-action-menu-item is-danger' : 'preset-action-menu-item';
+      button.textContent = label;
+      button.setAttribute('role', 'menuitem');
+      button.addEventListener('click', (event) => {
         event.stopPropagation();
-        onClick();
-      }
+        closePresetActionMenu();
+        action();
+      });
+      menu.appendChild(button);
     });
-    return control;
+
+    document.body.appendChild(menu);
+    const rect = anchor.getBoundingClientRect();
+    const menuWidth = 170;
+    const menuHeight = actions.length * 34 + 12;
+    const viewportWidth = Number(window.innerWidth) || 1200;
+    const viewportHeight = Number(window.innerHeight) || 800;
+    const left = Math.min(Math.max(8, rect.left), Math.max(8, viewportWidth - menuWidth - 8));
+    const top = rect.bottom + menuHeight + 8 <= viewportHeight ? rect.bottom + 4 : rect.top - menuHeight - 4;
+    menu.style.left = `${left}px`;
+    menu.style.top = `${Math.max(8, top)}px`;
+    state.presetMenu = menu;
+    state.presetMenuButton = anchor;
   }
 
   function bindPresetSelection(card, entry, check) {
@@ -1314,24 +1397,6 @@
         toggle();
       }
     });
-  }
-
-  function makeTransformButton(label, symbol, entry, axis) {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'preset-transform';
-    button.textContent = symbol;
-    button.title = label;
-    button.setAttribute('aria-label', `${entry.label}${label}`);
-    button.addEventListener('pointerdown', (event) => event.stopPropagation());
-    button.addEventListener('click', (event) => {
-      event.stopPropagation();
-      const current = state.presetTransforms[entry.key] || { flipX: false, flipY: false };
-      current[axis] = !current[axis];
-      state.presetTransforms[entry.key] = current;
-      renderPresetLibrary();
-    });
-    return button;
   }
 
   function renderPatternThumb(canvas, pattern) {
@@ -2017,6 +2082,7 @@
       editing.width = shape.width;
       editing.height = shape.height;
       editing.cells = shape.cells;
+      delete state.presetTransforms[`custom:${editing.id}`];
       persistCustomPresets();
       renderPresetLibrary();
       closeEditor();
@@ -2072,6 +2138,10 @@
       cancelReplayImport(); return;
     }
     if (event.key === 'Escape') {
+      if (state.presetMenu) {
+        closePresetActionMenu();
+        return;
+      }
       if (els.mutationModal.classList.contains('is-open')) {
         cancelMutationSettings();
         return;

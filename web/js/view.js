@@ -2,7 +2,13 @@
   'use strict';
 
   const STORAGE_KEY = 'conway-life-view-settings-v1';
-  const defaults = { showKeys: true, showStageHint: true, coordinates: true, magnification: 200 };
+  const defaults = {
+    showKeys: true,
+    showStageHint: true,
+    coordinates: true,
+    magnifierShortcut: true,
+    magnification: 200
+  };
   const zoomValue = (value) => Number.isFinite(Number(value))
     ? Math.max(150, Math.min(300, Math.round(Number(value) / 25) * 25)) : 200;
 
@@ -12,6 +18,8 @@
       showKeys: typeof source.showKeys === 'boolean' ? source.showKeys : defaults.showKeys,
       showStageHint: typeof source.showStageHint === 'boolean' ? source.showStageHint : defaults.showStageHint,
       coordinates: typeof source.coordinates === 'boolean' ? source.coordinates : defaults.coordinates,
+      magnifierShortcut: typeof source.magnifierShortcut === 'boolean'
+        ? source.magnifierShortcut : defaults.magnifierShortcut,
       magnification: zoomValue(source.magnification ?? 200)
     };
   }
@@ -40,6 +48,10 @@
 
     function savePreferences(next) {
       preferences = normalizePreferences(next);
+      if (!preferences.magnifierShortcut) {
+        magnifier = false;
+        els.magnifierPanel.hidden = true;
+      }
       try { window.localStorage.setItem(STORAGE_KEY, JSON.stringify(preferences)); }
       catch { showToast('显示设置无法保存，当前页面仍会应用'); }
       applyPreferences();
@@ -54,6 +66,11 @@
     function applyPreferences() {
       els.keyHelp.hidden = !preferences.showKeys;
       els.stageHint.hidden = !preferences.showStageHint;
+      els.magnifierPanel.hidden = !magnifier;
+      els.magnifierShortcutSetting.checked = preferences.magnifierShortcut;
+      els.magnifierShortcutHint.textContent = preferences.magnifierShortcut
+        ? '左 Shift：开关放大镜（可在设置中禁用）'
+        : '左 Shift 快捷键已禁用，可使用右上角 × 关闭放大镜';
       els.magnificationRange.value = String(preferences.magnification);
       els.magnificationValue.textContent = preferences.magnification + '%';
       els.zoomInButton.disabled = preferences.magnification >= 300;
@@ -80,7 +97,8 @@
       if (blocked() || event.target?.isContentEditable
         || ['INPUT', 'TEXTAREA', 'SELECT'].includes(event.target?.tagName)) return false;
       if (event.code === 'ControlLeft') leftControl = true;
-      else if (!event.repeat) {
+      else if (!preferences.magnifierShortcut || event.repeat) return true;
+      else {
         magnifier = !magnifier;
         els.magnifierPanel.hidden = !magnifier;
       }

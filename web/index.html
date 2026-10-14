@@ -106,6 +106,7 @@
 
   <aside class="magnifier-panel" id="magnifierPanel" hidden aria-label="放大镜">
     <div class="magnifier-heading"><strong>放大镜</strong><button id="closeMagnifierButton" type="button" aria-label="关闭放大镜">×</button></div>
+    <p class="magnifier-shortcut-hint" id="magnifierShortcutHint">左 Shift：开关放大镜（可在设置中禁用）</p>
     <div class="magnifier-stage">
       <canvas id="magnifierCanvas" width="600" height="360" aria-label="鼠标周围区域的放大预览"></canvas>
       <p id="magnifierEmpty">鼠标移入主场地查看</p>
@@ -163,7 +164,8 @@
         <label class="setting-toggle"><input id="showKeysSetting" type="checkbox" checked><span>显示快捷键小贴士</span></label>
         <label class="setting-toggle"><input id="showStageHintSetting" type="checkbox" checked><span>显示画布操作提示</span></label>
         <label class="setting-toggle"><input id="coordinatesSetting" type="checkbox" checked><span>启用左 Ctrl 坐标提示</span></label>
-        <p class="settings-note">左 Shift 切换放大镜，倍率在放大镜下方调整并自动保存。</p>
+        <label class="setting-toggle"><input id="magnifierShortcutSetting" type="checkbox" checked><span>启用左 Shift 放大镜快捷键</span></label>
+        <p class="settings-note">放大镜倍率在预览面板下方调整并自动保存。</p>
       </fieldset>
       <p class="settings-note readonly-note" id="mutationLockHelp" hidden>倒放只读：可以修改显示偏好，退出倒放后才能修改突变参数。</p>
       <fieldset class="settings-section" id="mutationFields">
