@@ -19,6 +19,7 @@
   const MAX_PRESET_LABEL = 16;
   const DEFAULT_LIBRARY_HELP = '拖拽卡片到场地放置，点击卡片不会改变地图。';
   const SELECT_LIBRARY_HELP = '勾选要导出的形状，再点“导出所选”。';
+  const history = globalThis.CONWAY_HISTORY.create(2000);
 
   const gameCanvas = document.getElementById('gameCanvas');
   const gameStage = gameCanvas.parentElement;
@@ -35,6 +36,14 @@
     generation: 0,
     population: 0,
     running: false,
+    playDirection: 'forward',
+    reverseReadonly: false,
+    replayIoBusy: false,
+    replayIoKind: null,
+    replayIoId: 0,
+    replayReading: false,
+    replayResume: null,
+    pendingReplay: null,
     speed: 10,
     boundary: 'wrap',
     showGrid: true,
@@ -47,6 +56,7 @@
     mutationDeathRatio: 0.5,
     mutationMoveRatio: 0.5,
     mutationResumeRunning: false,
+    mutationResumeDirection: 'forward',
     gameView: { width: 0, height: 0, dpr: 1 },
     editorView: { width: 0, height: 0, dpr: 1 },
     drawing: null,
@@ -58,7 +68,10 @@
     presetSelectionMode: false,
     selectedPresetKeys: new Set(),
     renamingPresetId: null,
+    presetMenu: null,
+    presetMenuButton: null,
     presetDrag: null,
+    historyNavigationId: 0,
     preview: null,
     toastTimer: null
   };
@@ -71,6 +84,19 @@
     speedValue: document.getElementById('speedValue'),
     playButton: document.getElementById('playButton'),
     stepButton: document.getElementById('stepButton'),
+    backButton: document.getElementById('backButton'),
+    reverseButton: document.getElementById('reverseButton'),
+    exitReverseButton: document.getElementById('exitReverseButton'),
+    exportReplayButton: document.getElementById('exportReplayButton'),
+    importReplayButton: document.getElementById('importReplayButton'),
+    importReplayInput: document.getElementById('importReplayInput'),
+    replayConfirmModal: document.getElementById('replayConfirmModal'),
+    replayConfirmMessage: document.getElementById('replayConfirmMessage'),
+    confirmReplayButton: document.getElementById('confirmReplayButton'),
+    cancelReplayButton: document.getElementById('cancelReplayButton'),
+    historyPosition: document.getElementById('historyPosition'),
+    historyCounts: document.getElementById('historyCounts'),
+    historyMode: document.getElementById('historyMode'),
     clearButton: document.getElementById('clearButton'),
     randomButton: document.getElementById('randomButton'),
     boundaryButton: document.getElementById('boundaryButton'),
@@ -88,6 +114,38 @@
     clearEditorButton: document.getElementById('clearEditorButton'),
     saveEditorButton: document.getElementById('saveEditorButton'),
     mutationModal: document.getElementById('mutationModal'),
+    mutationFields: document.getElementById('mutationFields'),
+    mutationLockHelp: document.getElementById('mutationLockHelp'),
+    showKeysSetting: document.getElementById('showKeysSetting'),
+    showStageHintSetting: document.getElementById('showStageHintSetting'),
+    coordinatesSetting: document.getElementById('coordinatesSetting'),
+    magnifierShortcutSetting: document.getElementById('magnifierShortcutSetting'),
+    themePresetColors: document.getElementById('themePresetColors'),
+    themeCustomButton: document.getElementById('themeCustomButton'),
+    themeCustomSwatch: document.getElementById('themeCustomSwatch'),
+    themeCustomPanel: document.getElementById('themeCustomPanel'),
+    themeSpectrum: document.getElementById('themeSpectrum'),
+    themeColorMarker: document.getElementById('themeColorMarker'),
+    themeHue: document.getElementById('themeHue'),
+    themeRed: document.getElementById('themeRed'),
+    themeGreen: document.getElementById('themeGreen'),
+    themeBlue: document.getElementById('themeBlue'),
+    themeHoverValue: document.getElementById('themeHoverValue'),
+    themeSelectionSwatch: document.getElementById('themeSelectionSwatch'),
+    themeSelectionValue: document.getElementById('themeSelectionValue'),
+    themeColorError: document.getElementById('themeColorError'),
+    keyHelp: document.getElementById('keyHelp'),
+    stageHint: document.getElementById('stageHint'),
+    coordinateValue: document.getElementById('coordinateValue'),
+    magnifierPanel: document.getElementById('magnifierPanel'),
+    magnifierCanvas: document.getElementById('magnifierCanvas'),
+    magnifierEmpty: document.getElementById('magnifierEmpty'),
+    magnifierShortcutHint: document.getElementById('magnifierShortcutHint'),
+    closeMagnifierButton: document.getElementById('closeMagnifierButton'),
+    magnificationRange: document.getElementById('magnificationRange'),
+    magnificationValue: document.getElementById('magnificationValue'),
+    zoomInButton: document.getElementById('zoomInButton'),
+    zoomOutButton: document.getElementById('zoomOutButton'),
     closeMutationButton: document.getElementById('closeMutationButton'),
     cancelMutationButton: document.getElementById('cancelMutationButton'),
     saveMutationButton: document.getElementById('saveMutationButton'),
@@ -118,6 +176,130 @@
     renameError: document.getElementById('renameError'),
     toast: document.getElementById('toast')
   };
+
+  const viewTools = globalThis.CONWAY_VIEW.create({ canvas: gameCanvas, cols: COLS, rows: ROWS,
+    els, blocked: modalOpen, showToast });
+  const themeTools = globalThis.CONWAY_THEME.create({ els });
+
+  function modalOpen() {
+    return state.replayIoBusy || [els.mutationModal, els.renameModal, els.shapeManagerModal, els.editorModal,
+      els.replayConfirmModal].some((modal) => modal.classList.contains('is-open'));
+  }
+
+  function boardLocked() {
+    return state.reverseReadonly || state.replayIoBusy;
+  }
+
+  // ===== 回放文件 =====
+  function beginReplayIo(kind) {
+    finishGameDrawing(false);
+    ensureHistory();
+    state.replayResume = { running: state.running, direction: state.playDirection };
+    stopRunning();
+    state.replayIoBusy = true;
+    state.replayIoKind = kind;
+    state.replayIoId += 1;
+    state.replayReading = false;
+    state.historyNavigationId += 1;
+    state.preview = null;
+    viewTools.clearKeys();
+    updatePlayButtons();
+    draw();
+  }
+
+  function finishReplayIo(resume) {
+    const previous = state.replayResume;
+    state.replayIoBusy = false;
+    state.replayIoKind = null;
+    state.replayIoId += 1;
+    state.replayReading = false;
+    state.replayResume = null;
+    state.pendingReplay = null;
+    els.replayConfirmModal.classList.remove('is-open');
+    updatePlayButtons();
+    viewTools.scheduleDraw();
+    if (resume && previous?.running) startRunning(previous.direction);
+  }
+
+  async function exportReplay() {
+    if (state.replayIoBusy) return;
+    beginReplayIo('export');
+    try {
+      const bytes = globalThis.CONWAY_REPLAY.encode(history.exportTimeline(), COLS, ROWS);
+      const name = 'conway-life-replay-' + dateStamp(new Date()) + '-' + Date.now() + '.conway-replay';
+      if (canSaveWithDialog()) {
+        const path = await globalThis.__TAURI__.core.invoke('export_replay_file', bytes, {
+          headers: { 'x-conway-filename': name }
+        });
+        showToast(path ? '已保存到 ' + path : '已取消导出');
+      } else {
+        const blob = new Blob([bytes], { type: 'application/octet-stream' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = name;
+        link.style.display = 'none';
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        window.setTimeout(() => URL.revokeObjectURL(url), 5000);
+        showToast('已导出回放文件');
+      }
+    } catch (error) {
+      showToast('回放导出失败：' + (error?.message || String(error)));
+    } finally {
+      finishReplayIo(true);
+    }
+  }
+
+  function chooseReplayFile() {
+    if (boardLocked()) return;
+    beginReplayIo('import');
+    try { els.importReplayInput.click(); }
+    catch (error) { showToast('无法选择回放文件'); finishReplayIo(true); }
+  }
+
+  async function importReplayFile(file) {
+    if (state.reverseReadonly || (state.replayIoBusy && state.replayIoKind !== 'import')) return;
+    if (state.replayReading || state.pendingReplay) return;
+    if (!file) { if (state.replayIoKind === 'import') finishReplayIo(true); return; }
+    if (!state.replayIoBusy) beginReplayIo('import');
+    const operationId = state.replayIoId;
+    state.replayReading = true;
+    try {
+      if (file.size > globalThis.CONWAY_REPLAY.MAX_BYTES) throw new Error('回放文件超过 80 MiB');
+      const bytes = await file.arrayBuffer();
+      if (operationId !== state.replayIoId || state.replayIoKind !== 'import') return;
+      state.pendingReplay = globalThis.CONWAY_REPLAY.decode(bytes, COLS, ROWS, history.status().capacity);
+      state.replayReading = false;
+      els.replayConfirmMessage.textContent = '将用 ' + state.pendingReplay.entries.length
+        + ' 条记录替换当前场地和历史，导入后暂停在最早记录。预设库和永久设置保持不变。';
+      els.replayConfirmModal.classList.add('is-open');
+      els.cancelReplayButton.focus();
+    } catch (error) {
+      if (operationId !== state.replayIoId) return;
+      showToast('回放导入失败：' + (error?.message || String(error)));
+      finishReplayIo(true);
+    }
+  }
+
+  function cancelReplayImport() {
+    if (state.replayIoKind !== 'import') return;
+    finishReplayIo(true);
+  }
+
+  function confirmReplayImport() {
+    if (state.replayIoKind !== 'import' || !state.pendingReplay) return;
+    try {
+      const first = history.replaceTimeline(state.pendingReplay);
+      restoreHistory(first);
+      finishReplayIo(false);
+      showToast('已导入回放，暂停在最早记录');
+    } catch (error) {
+      showToast('回放导入失败：' + (error?.message || String(error)));
+      finishReplayIo(true);
+    }
+  }
 
   // ===== 系统预设 =====
   const SYSTEM_PRESETS = {
@@ -169,6 +351,8 @@
   function init() {
     loadCustomPresets();
     loadMutationSettings();
+    viewTools.loadPreferences();
+    ensureHistory();
     bindEvents();
     resizeCanvases();
     renderPresetLibrary();
@@ -186,11 +370,32 @@
       observer.observe(editorCanvas.parentElement);
     }
     document.addEventListener('keydown', handleKeydown);
+    document.addEventListener('pointerdown', (event) => {
+      if (!state.presetMenu) return;
+      if (event.target === state.presetMenuButton || state.presetMenu.contains?.(event.target)) return;
+      closePresetActionMenu();
+    });
+    viewTools.bind();
+    themeTools.bind();
+    window.addEventListener('blur', () => finishGameDrawing(false));
 
     els.playButton.addEventListener('click', toggleRunning);
-    els.stepButton.addEventListener('click', () => {
-      if (state.running) stopRunning();
-      step();
+    els.stepButton.addEventListener('click', forwardOne);
+    els.backButton.addEventListener('click', backwardOne);
+    els.reverseButton.addEventListener('click', toggleReverse);
+    els.exitReverseButton.addEventListener('click', exitReverse);
+    els.exportReplayButton.addEventListener('click', exportReplay);
+    els.importReplayButton.addEventListener('click', chooseReplayFile);
+    els.importReplayInput.addEventListener('change', () => {
+      const file = els.importReplayInput.files?.[0] || null;
+      els.importReplayInput.value = '';
+      importReplayFile(file);
+    });
+    els.importReplayInput.addEventListener('cancel', cancelReplayImport);
+    els.cancelReplayButton.addEventListener('click', cancelReplayImport);
+    els.confirmReplayButton.addEventListener('click', confirmReplayImport);
+    els.replayConfirmModal.addEventListener('click', (event) => {
+      if (event.target === els.replayConfirmModal) cancelReplayImport();
     });
     els.clearButton.addEventListener('click', () => clearBoard(true));
     els.randomButton.addEventListener('click', randomize);
@@ -261,8 +466,109 @@
     bindEditorCanvasEvents();
   }
 
+  // ===== 历史记录与导航 =====
+  function snapshotState() {
+    const snapshot = { cellAges: state.cellAges };
+    globalThis.CONWAY_HISTORY.fields.forEach((field) => { snapshot[field] = state[field]; });
+    return snapshot;
+  }
+
+  function ensureHistory() {
+    if (!history.status().length) history.reset(snapshotState());
+  }
+
+  function recordHistory(operation) {
+    if (boardLocked()) return false;
+    const hadFuture = history.status().forward > 0;
+    const changed = history.append(snapshotState(), operation);
+    // 从历史中编辑出新分支后，正放立即转为实时演化。
+    if (changed && hadFuture) {
+      state.historyNavigationId += 1;
+      state.preview = null;
+      restartMutationTimer();
+    }
+    updatePlayButtons();
+    return changed;
+  }
+
+  function restoreHistory(snapshot) {
+    if (!snapshot) return false;
+    state.cellAges.set(snapshot.cellAges);
+    globalThis.CONWAY_HISTORY.fields.forEach((field) => { state[field] = snapshot[field]; });
+    for (let index = 0; index < state.grid.length; index += 1) {
+      state.grid[index] = state.cellAges[index] > 0 ? 1 : 0;
+    }
+    state.nextGrid.fill(0);
+    state.historyNavigationId += 1;
+    state.preview = null;
+    state.presetDrag = null;
+    updateStats();
+    updateMutationButton();
+    draw();
+    return true;
+  }
+
+  function backwardOne() {
+    if (state.replayIoBusy) return;
+    finishGameDrawing(false);
+    stopRunning();
+    ensureHistory();
+    restoreHistory(history.backward());
+  }
+
+  function forwardOne() {
+    if (state.replayIoBusy) return;
+    finishGameDrawing(false);
+    stopRunning();
+    step();
+  }
+
+  function toggleReverse() {
+    if (state.replayIoBusy) return;
+    finishGameDrawing(false);
+    if (state.running && state.playDirection === 'reverse') stopRunning();
+    else startRunning('reverse');
+  }
+
+  function exitReverse() {
+    if (state.replayIoBusy) return;
+    stopRunning();
+    state.reverseReadonly = false;
+    state.historyNavigationId += 1;
+    state.preview = null;
+    state.presetDrag = null;
+    updatePlayButtons();
+    draw();
+  }
+
+  function playbackTick() {
+    if (!state.running || state.drawing) return;
+    if (state.playDirection === 'reverse') {
+      restoreHistory(history.backward());
+      if (!history.status().backward) stopRunning();
+    } else {
+      step();
+    }
+  }
+
+  function prepareBoardEdit() {
+    if (boardLocked()) return false;
+    finishGameDrawing(false);
+    ensureHistory();
+    return true;
+  }
+
   // ===== 游戏逻辑 =====
   function step() {
+    if (state.replayIoBusy) return;
+    finishGameDrawing(false);
+    ensureHistory();
+    if (history.status().forward) {
+      restoreHistory(history.forward());
+      if (state.running && !history.status().forward) restartMutationTimer();
+      return;
+    }
+    if (state.reverseReadonly) return;
     const source = state.grid;
     const target = state.nextGrid;
     let population = 0;
@@ -283,6 +589,7 @@
     state.nextGrid = source;
     state.population = population;
     state.generation += 1;
+    recordHistory('evolution');
     updateStats();
     draw();
   }
@@ -308,11 +615,26 @@
   }
 
   function toggleRunning() {
+    if (state.replayIoBusy) return;
+    finishGameDrawing(false);
     if (state.running) stopRunning();
-    else startRunning();
+    else startRunning(state.reverseReadonly ? 'reverse' : 'forward');
   }
 
-  function startRunning() {
+  function startRunning(direction = 'forward') {
+    if (state.replayIoBusy) return;
+    finishGameDrawing(false);
+    ensureHistory();
+    if (direction === 'reverse') {
+      state.reverseReadonly = true;
+      state.historyNavigationId += 1;
+      state.preview = null;
+      state.presetDrag = null;
+      draw();
+    }
+    if (state.reverseReadonly) direction = 'reverse';
+    if (direction === 'reverse' && !history.status().backward) { stopRunning(); return; }
+    state.playDirection = direction;
     state.running = true;
     restartTimer();
     restartMutationTimer();
@@ -334,22 +656,56 @@
 
   function restartTimer() {
     if (state.timerId !== null) window.clearInterval(state.timerId);
-    state.timerId = window.setInterval(step, 1000 / state.speed);
+    state.timerId = null;
+    if (!state.running) return;
+    const timerId = window.setInterval(() => {
+      if (state.timerId === timerId) playbackTick();
+    }, 1000 / state.speed);
+    state.timerId = timerId;
   }
 
   function restartMutationTimer() {
     if (state.mutationTimerId !== null) window.clearInterval(state.mutationTimerId);
     state.mutationTimerId = null;
-    if (state.running && state.mutationEnabled) {
-      state.mutationTimerId = window.setInterval(applyMutations, 1000);
+    if (!boardLocked() && state.running && state.playDirection === 'forward' && !history.status().forward && state.mutationEnabled) {
+      const timerId = window.setInterval(() => {
+        if (state.mutationTimerId === timerId) applyMutations();
+      }, 1000);
+      state.mutationTimerId = timerId;
     }
   }
 
   function updatePlayButtons() {
     const isRunning = state.running;
-    els.playButton.textContent = isRunning ? 'Ⅱ 暂停' : '▶ 播放';
+    els.playButton.textContent = isRunning ? 'Ⅱ 暂停' : state.reverseReadonly ? '◀ 继续倒放' : '▶ 播放';
     els.playButton.classList.toggle('is-running', isRunning);
     els.playButton.classList.toggle('is-paused', !isRunning);
+    const position = history.status();
+    const reversing = isRunning && state.playDirection === 'reverse';
+    els.backButton.disabled = position.backward === 0;
+    els.reverseButton.disabled = position.backward === 0 && !reversing;
+    els.reverseButton.textContent = reversing ? 'Ⅱ 停止倒放' : '◀ 倒放';
+    els.reverseButton.classList.toggle('is-active', reversing);
+    els.reverseButton.setAttribute('aria-pressed', String(reversing));
+    els.exitReverseButton.hidden = !state.reverseReadonly;
+    els.clearButton.disabled = boardLocked();
+    els.randomButton.disabled = boardLocked();
+    els.boundaryButton.disabled = boardLocked();
+    els.stepButton.disabled = state.replayIoBusy || (state.reverseReadonly && !position.forward);
+    els.importReplayButton.disabled = boardLocked();
+    els.exportReplayButton.disabled = state.replayIoBusy;
+    els.playButton.disabled = state.replayIoBusy || (state.reverseReadonly && !isRunning && !position.backward);
+    els.backButton.disabled = state.replayIoBusy || !position.backward;
+    els.reverseButton.disabled = state.replayIoBusy || (!position.backward && !reversing);
+    els.exitReverseButton.disabled = state.replayIoBusy;
+    els.historyPosition.textContent = `历史位置 ${Math.max(0, position.cursor)} / ${Math.max(0, position.length - 1)}`;
+    els.historyCounts.textContent = `可倒退 ${position.backward} · 可前进 ${position.forward}`;
+    const mode = state.drawing ? '绘制中' : !isRunning ? '暂停'
+      : reversing ? '倒放中' : position.forward ? '历史重播' : '演化中';
+    const operations = { initial: '起点', evolution: '演化', mutation: '突变', draw: '绘制',
+      erase: '擦除', preset: '预设放置', clear: '清空', random: '随机', boundary: '边界切换', settings: '突变设置' };
+    els.historyMode.textContent = (state.reverseReadonly ? '倒放只读 · ' : '') + (state.replayIoBusy ? '文件处理中 · ' : '') + mode
+      + ' · ' + (operations[position.operation] || '历史状态') + (position.dropped ? ' · 早期记录已淘汰' : '');
   }
 
   function setSpeed(value) {
@@ -360,17 +716,20 @@
   }
 
   function clearBoard(resetGeneration) {
+    if (!prepareBoardEdit()) return;
     state.grid.fill(0);
     state.nextGrid.fill(0);
     state.cellAges.fill(0);
     state.population = 0;
     if (resetGeneration) state.generation = 0;
     state.preview = null;
+    recordHistory('clear');
     updateStats();
     draw();
   }
 
   function randomize() {
+    if (!prepareBoardEdit()) return;
     if (state.running) stopRunning();
     for (let i = 0; i < state.grid.length; i += 1) {
       state.grid[i] = Math.random() < RANDOM_DENSITY ? 1 : 0;
@@ -379,16 +738,16 @@
     state.nextGrid.fill(0);
     state.generation = 0;
     state.population = countPopulation(state.grid);
+    recordHistory('random');
     updateStats();
     draw();
   }
 
   function toggleBoundary() {
+    if (!prepareBoardEdit()) return;
     state.boundary = state.boundary === 'wrap' ? 'finite' : 'wrap';
-    const isWrap = state.boundary === 'wrap';
-    els.boundaryButton.textContent = `边界：${isWrap ? '环绕' : '有限'}`;
-    els.boundaryButton.classList.toggle('is-active', isWrap);
-    els.boundaryValue.textContent = isWrap ? '环绕' : '有限';
+    recordHistory('boundary');
+    updateStats();
     draw();
   }
 
@@ -409,6 +768,8 @@
     els.generationValue.textContent = String(state.generation);
     els.populationValue.textContent = String(state.population);
     els.boundaryValue.textContent = state.boundary === 'wrap' ? '环绕' : '有限';
+    els.boundaryButton.textContent = `边界：${state.boundary === 'wrap' ? '环绕' : '有限'}`;
+    els.boundaryButton.classList.toggle('is-active', state.boundary === 'wrap');
     els.speedValue.textContent = `${state.speed} 步/秒`;
     updatePlayButtons();
   }
@@ -448,14 +809,28 @@
   }
 
   function updateMutationButton() {
-    els.mutationButton.textContent = `细胞突变：${state.mutationEnabled ? '开' : '关'}`;
+    els.mutationButton.textContent = '设置';
+    els.mutationButton.title = '细胞突变：' + (state.mutationEnabled ? '开' : '关');
     els.mutationButton.classList.toggle('is-active', state.mutationEnabled);
   }
 
   function openMutationSettings() {
+    if (state.replayIoBusy) return;
     if (els.mutationModal.classList.contains('is-open')) return;
+    finishGameDrawing(false);
+    ensureHistory();
     state.mutationResumeRunning = state.running;
+    state.mutationResumeDirection = state.playDirection;
     if (state.running) stopRunning();
+    viewTools.clearKeys();
+    const preferences = viewTools.preferences;
+    themeTools.open(preferences);
+    els.showKeysSetting.checked = preferences.showKeys;
+    els.showStageHintSetting.checked = preferences.showStageHint;
+    els.coordinatesSetting.checked = preferences.coordinates;
+    els.magnifierShortcutSetting.checked = preferences.magnifierShortcut;
+    els.mutationFields.disabled = state.reverseReadonly;
+    els.mutationLockHelp.hidden = !state.reverseReadonly;
     els.mutationEnabled.checked = state.mutationEnabled;
     els.mutationPreferStable.checked = state.mutationPreferStable;
     els.mutationCount.value = String(state.mutationCount);
@@ -469,9 +844,10 @@
     if (!els.mutationModal.classList.contains('is-open')) return;
     els.mutationModal.classList.remove('is-open');
     const shouldResume = restoreRunning && state.mutationResumeRunning;
+    const direction = state.mutationResumeDirection;
     state.mutationResumeRunning = false;
     els.mutationButton.focus();
-    if (shouldResume) startRunning();
+    if (shouldResume) startRunning(direction);
   }
 
   function cancelMutationSettings() {
@@ -479,22 +855,50 @@
   }
 
   function saveMutationSettings() {
-    state.mutationCount = clampInt(els.mutationCount.value, 1, 1000, 10);
-    state.mutationProbability = clamp(Number(els.mutationProbability.value) / 100, 0, 1, 0.1);
-    const movePercent = clampInt(els.mutationRatioRange.value, 0, 100, 50);
-    state.mutationDeathRatio = (100 - movePercent) / 100;
-    state.mutationMoveRatio = movePercent / 100;
-    state.mutationPreferStable = els.mutationPreferStable.checked;
-    state.mutationEnabled = els.mutationEnabled.checked;
-    persistMutationSettings();
+    if (state.replayIoBusy) return;
+    const theme = themeTools.readDraft();
+    if (!theme) return;
+    const previousColor = viewTools.colors.cell;
+    viewTools.savePreferences({ ...viewTools.preferences, showKeys: els.showKeysSetting.checked,
+      showStageHint: els.showStageHintSetting.checked, coordinates: els.coordinatesSetting.checked,
+      magnifierShortcut: els.magnifierShortcutSetting.checked, ...theme });
+    if (viewTools.colors.cell !== previousColor) {
+      draw();
+      drawEditor();
+      renderPresetLibrary();
+    }
+    ensureHistory();
+    const before = globalThis.CONWAY_HISTORY.fields
+      .filter((field) => field.startsWith('mutation'))
+      .map((field) => state[field]);
+    if (!state.reverseReadonly) {
+      state.mutationCount = clampInt(els.mutationCount.value, 1, 1000, 10);
+      state.mutationProbability = clamp(Number(els.mutationProbability.value) / 100, 0, 1, 0.1);
+      const movePercent = clampInt(els.mutationRatioRange.value, 0, 100, 50);
+      state.mutationDeathRatio = (100 - movePercent) / 100;
+      state.mutationMoveRatio = movePercent / 100;
+      state.mutationPreferStable = els.mutationPreferStable.checked;
+      state.mutationEnabled = els.mutationEnabled.checked;
+      const changed = globalThis.CONWAY_HISTORY.fields
+        .filter((field) => field.startsWith('mutation'))
+        .some((field, index) => state[field] !== before[index]);
+      if (changed) {
+        recordHistory('settings');
+        persistMutationSettings();
+      }
+    }
     updateMutationButton();
     restartMutationTimer();
     closeMutationSettings(true);
-    showToast(state.mutationEnabled ? '已启用细胞突变' : '已关闭细胞突变');
+    showToast('设置已保存');
   }
 
   function applyMutations() {
-    if (!state.running || !state.mutationEnabled || state.population === 0) return;
+    if (boardLocked()) return;
+    if (!state.running || state.playDirection !== 'forward' || history.status().forward
+      || state.drawing || !state.mutationEnabled || state.population === 0) return;
+    ensureHistory();
+    let changed = false;
 
     const candidates = selectMutationCells();
     for (const sourceIndex of candidates) {
@@ -502,6 +906,7 @@
       if (Math.random() < state.mutationDeathRatio) {
         state.grid[sourceIndex] = 0;
         state.cellAges[sourceIndex] = 0;
+        changed = true;
         continue;
       }
 
@@ -525,10 +930,13 @@
       state.cellAges[sourceIndex] = 0;
       state.grid[targetIndex] = 1;
       state.cellAges[targetIndex] = 1;
+      changed = true;
     }
 
+    if (!changed) return;
     state.nextGrid.fill(0);
     state.population = countPopulation(state.grid);
+    recordHistory('mutation');
     updateStats();
     draw();
   }
@@ -578,39 +986,64 @@
   }
 
   // ===== 主画布绘制与鼠标操作 =====
+  function finishGameDrawing(resumeRunning) {
+    const drawing = state.drawing;
+    if (!drawing) return;
+    state.drawing = null;
+    if (gameCanvas.hasPointerCapture?.(drawing.pointerId)) gameCanvas.releasePointerCapture(drawing.pointerId);
+    recordHistory(drawing.value ? 'draw' : 'erase');
+    if (resumeRunning && drawing.resumeForward) startRunning();
+  }
+
   function bindGameCanvasEvents() {
     gameCanvas.addEventListener('contextmenu', (event) => event.preventDefault());
     gameCanvas.addEventListener('pointerdown', (event) => {
-      if (event.button !== 0 && event.button !== 2) return;
+      if (boardLocked()) return;
+      if (state.drawing || (event.button !== 0 && event.button !== 2)) return;
       event.preventDefault();
       const cell = canvasToCell(gameCanvas, event.clientX, event.clientY);
       if (!cell) return;
-      state.drawing = { pointerId: event.pointerId, value: event.button === 2 ? 0 : 1 };
+      ensureHistory();
+      const resumeForward = state.running && state.playDirection === 'forward';
+      stopRunning();
+      state.drawing = { pointerId: event.pointerId, value: event.button === 2 ? 0 : 1, resumeForward };
       gameCanvas.setPointerCapture?.(event.pointerId);
+      updatePlayButtons();
       setCell(cell.x, cell.y, state.drawing.value);
     });
     gameCanvas.addEventListener('pointermove', (event) => {
+      if (boardLocked()) return;
       if (!state.drawing || event.pointerId !== state.drawing.pointerId) return;
       const cell = canvasToCell(gameCanvas, event.clientX, event.clientY);
       if (cell) setCell(cell.x, cell.y, state.drawing.value);
     });
     const finishDrawing = (event) => {
-      if (state.drawing && event.pointerId === state.drawing.pointerId) state.drawing = null;
+      if (!state.drawing || event.pointerId !== state.drawing.pointerId) return;
+      const cell = canvasToCell(gameCanvas, event.clientX, event.clientY);
+      if (cell) setCell(cell.x, cell.y, state.drawing.value);
+      finishGameDrawing(true);
     };
     gameCanvas.addEventListener('pointerup', finishDrawing);
-    gameCanvas.addEventListener('pointercancel', finishDrawing);
+    const cancelDrawing = (event) => {
+      if (state.drawing && event.pointerId === state.drawing.pointerId) finishGameDrawing(false);
+    };
+    gameCanvas.addEventListener('pointercancel', cancelDrawing);
+    gameCanvas.addEventListener('lostpointercapture', cancelDrawing);
     gameCanvas.addEventListener('pointerleave', (event) => {
-      if (state.drawing && event.pointerId === state.drawing.pointerId && !gameCanvas.hasPointerCapture?.(event.pointerId)) state.drawing = null;
+      if (state.drawing && event.pointerId === state.drawing.pointerId && !gameCanvas.hasPointerCapture?.(event.pointerId)) finishGameDrawing(false);
     });
   }
 
   function setCell(x, y, value) {
+    if (boardLocked()) return;
     const index = y * COLS + x;
     if (state.grid[index] === value) return;
+    if (!state.drawing) prepareBoardEdit();
     state.grid[index] = value;
     state.cellAges[index] = value ? 1 : 0;
     state.population += value ? 1 : -1;
     state.nextGrid[index] = 0;
+    if (!state.drawing) recordHistory(value ? 'draw' : 'erase');
     updateStats();
     draw();
   }
@@ -627,6 +1060,7 @@
   }
 
   function draw() {
+    viewTools.scheduleDraw();
     const { width, height } = state.gameView;
     if (!width || !height) return;
     gameCtx.clearRect(0, 0, width, height);
@@ -638,7 +1072,7 @@
     const showGrid = state.showGrid && Math.min(cellWidth, cellHeight) >= 6;
     const gap = showGrid ? Math.min(0.9, Math.max(0.35, cellWidth * 0.06)) : 0;
 
-    gameCtx.fillStyle = '#54f1d2';
+    gameCtx.fillStyle = viewTools.colors.cell;
     for (let y = 0; y < ROWS; y += 1) {
       for (let x = 0; x < COLS; x += 1) {
         if (!state.grid[y * COLS + x]) continue;
@@ -669,7 +1103,7 @@
   function drawPreview(preview, cellWidth, cellHeight) {
     const placement = getPlacementCells(preview.pattern, preview.anchor.x, preview.anchor.y);
     const gap = state.showGrid && Math.min(cellWidth, cellHeight) >= 6 ? 0.7 : 0;
-    gameCtx.fillStyle = 'rgba(84, 241, 210, 0.36)';
+    gameCtx.fillStyle = viewTools.colors.preview;
     placement.forEach(({ x, y }) => {
       gameCtx.fillRect(x * cellWidth + gap, y * cellHeight + gap, Math.max(1, cellWidth - gap * 2), Math.max(1, cellHeight - gap * 2));
     });
@@ -691,14 +1125,47 @@
   }
 
   function getTransformedPattern(entry) {
-    const transform = state.presetTransforms[entry.key] || { flipX: false, flipY: false };
+    const transform = state.presetTransforms[entry.key];
+    if (transform) {
+      return {
+        ...entry,
+        width: transform.width,
+        height: transform.height,
+        cells: transform.cells.map(([x, y]) => [x, y])
+      };
+    }
     return {
       ...entry,
-      cells: entry.cells.map(([x, y]) => [
-        transform.flipX ? entry.width - 1 - x : x,
-        transform.flipY ? entry.height - 1 - y : y
-      ])
+      cells: entry.cells.map(([x, y]) => [x, y])
     };
+  }
+
+  function transformPattern(pattern, operation) {
+    if (operation === 'flipX') {
+      return {
+        ...pattern,
+        cells: pattern.cells.map(([x, y]) => [pattern.width - 1 - x, y])
+      };
+    }
+    if (operation === 'rotateCW') {
+      return {
+        ...pattern,
+        width: pattern.height,
+        height: pattern.width,
+        cells: pattern.cells.map(([x, y]) => [pattern.height - 1 - y, x])
+      };
+    }
+    return pattern;
+  }
+
+  function applyPresetTransform(entry, operation) {
+    const transformed = transformPattern(getTransformedPattern(entry), operation);
+    state.presetTransforms[entry.key] = {
+      width: transformed.width,
+      height: transformed.height,
+      cells: transformed.cells.map(([x, y]) => [x, y])
+    };
+    renderPresetLibrary();
   }
 
   function getPlacementCells(pattern, anchorX, anchorY) {
@@ -729,6 +1196,7 @@
 
   function bindPresetPointer(card, entry) {
     card.addEventListener('pointerdown', (event) => {
+      if (boardLocked()) return;
       if (event.target.closest('button')) return;
       if (event.button !== 0) return;
       event.preventDefault();
@@ -737,11 +1205,13 @@
       const startX = event.clientX;
       const startY = event.clientY;
       const pattern = getTransformedPattern(entry);
+      const navigationId = state.historyNavigationId;
       let dragging = false;
       card.setPointerCapture?.(pointerId);
 
       const move = (moveEvent) => {
         if (moveEvent.pointerId !== pointerId) return;
+        if (navigationId !== state.historyNavigationId) return;
         const distance = Math.hypot(moveEvent.clientX - startX, moveEvent.clientY - startY);
         if (!dragging && distance > 5) dragging = true;
         if (!dragging) return;
@@ -759,10 +1229,12 @@
         if (card.hasPointerCapture?.(pointerId)) card.releasePointerCapture(pointerId);
 
         const cell = canvasToCell(gameCanvas, finishEvent.clientX, finishEvent.clientY);
-        if (finishEvent.type === 'pointerup' && dragging && cell) {
+        // 回看已经换了场地，旧拖拽不能再往恢复后的状态放置。
+        const sameScene = navigationId === state.historyNavigationId;
+        if (!boardLocked() && sameScene && finishEvent.type === 'pointerup' && dragging && cell) {
           placePattern(pattern, cell.x, cell.y, false);
           showToast(`已放置${pattern.label}`);
-        } else if (finishEvent.type === 'pointerup' && !dragging) {
+        } else if (sameScene && finishEvent.type === 'pointerup' && !dragging) {
           showToast('预设只能拖拽到场地');
         }
 
@@ -778,7 +1250,13 @@
   }
 
   function placePattern(pattern, anchorX, anchorY, clearFirst) {
-    if (clearFirst) clearBoard(true);
+    if (!prepareBoardEdit()) return;
+    if (clearFirst) {
+      // 清空并放置属于同一次操作，不能产生中间的空白历史。
+      state.grid.fill(0);
+      state.cellAges.fill(0);
+      state.generation = 0;
+    }
     const cells = getPlacementCells(pattern, anchorX, anchorY);
     cells.forEach(({ x, y }) => {
       const index = y * COLS + x;
@@ -787,11 +1265,13 @@
     });
     state.nextGrid.fill(0);
     state.population = countPopulation(state.grid);
+    recordHistory('preset');
     updateStats();
     draw();
   }
 
   function renderPresetLibrary() {
+    closePresetActionMenu();
     els.presetLibrary.replaceChildren();
     const entries = getPresetEntries();
 
@@ -812,30 +1292,35 @@
       const name = document.createElement('span');
       name.className = 'preset-name';
       name.textContent = entry.label;
+      name.title = entry.label;
       const kind = document.createElement('span');
       kind.className = 'preset-kind';
       kind.textContent = entry.type === 'system' ? '系统' : '自定义';
-      cardTop.append(name, kind);
 
-      const transformControls = document.createElement('div');
-      transformControls.className = 'preset-transform-controls';
-      transformControls.append(
-        makeTransformButton('左右翻转', '↔', entry, 'flipX'),
-        makeTransformButton('上下翻转', '↕', entry, 'flipY')
-      );
+      const menuToggle = document.createElement('button');
+      menuToggle.type = 'button';
+      menuToggle.className = 'preset-menu-toggle';
+      menuToggle.textContent = '+';
+      menuToggle.title = `打开${entry.label}操作菜单`;
+      menuToggle.setAttribute('aria-label', `打开${entry.label}操作菜单`);
+      menuToggle.setAttribute('aria-haspopup', 'menu');
+      menuToggle.addEventListener('pointerdown', (event) => event.stopPropagation());
+      menuToggle.addEventListener('click', (event) => {
+        event.stopPropagation();
+        openPresetActionMenu(entry, menuToggle);
+      });
 
       const footer = document.createElement('div');
       footer.className = 'preset-card-footer';
+      footer.append(name);
+      if (!state.presetSelectionMode) cardTop.append(menuToggle);
       if (entry.type === 'system') {
         const systemLabel = document.createElement('span');
         systemLabel.className = 'preset-system-label';
         systemLabel.textContent = '系统预设';
-        footer.append(systemLabel);
+        cardTop.append(systemLabel);
       } else {
-        footer.append(
-          makePresetTextButton('rename-preset', '改名', `重命名${entry.label}`, () => openRenameModal(entry.id)),
-          makePresetTextButton('delete-preset', '删除', `删除${entry.label}`, () => deletePreset(entry.id))
-        );
+        cardTop.append(kind);
       }
 
       if (state.presetSelectionMode) {
@@ -855,33 +1340,69 @@
         card.append(cardTop, thumb, check, footer);
         bindPresetSelection(card, entry, check);
       } else {
-        card.append(cardTop, thumb, transformControls, footer);
+        card.append(cardTop, thumb, footer);
         bindPresetPointer(card, entry);
       }
       els.presetLibrary.appendChild(card);
     });
   }
 
-  function makePresetTextButton(className, text, ariaLabel, onClick) {
-    const control = document.createElement('span');
-    control.className = className;
-    control.textContent = text;
-    control.setAttribute('role', 'button');
-    control.setAttribute('tabindex', '0');
-    control.setAttribute('aria-label', ariaLabel);
-    control.addEventListener('pointerdown', (event) => event.stopPropagation());
-    control.addEventListener('click', (event) => {
-      event.stopPropagation();
-      onClick();
-    });
-    control.addEventListener('keydown', (event) => {
-      if (event.key === 'Enter' || event.key === ' ') {
-        event.preventDefault();
+  function closePresetActionMenu() {
+    if (!state.presetMenu) return;
+    state.presetMenu.remove?.();
+    state.presetMenu = null;
+    state.presetMenuButton = null;
+  }
+
+  function openPresetActionMenu(entry, anchor) {
+    if (state.presetMenuButton === anchor) {
+      closePresetActionMenu();
+      return;
+    }
+    closePresetActionMenu();
+
+    const menu = document.createElement('div');
+    menu.className = 'preset-action-menu';
+    menu.setAttribute('role', 'menu');
+    menu.setAttribute('aria-label', `${entry.label}操作`);
+    menu.addEventListener('pointerdown', (event) => event.stopPropagation());
+
+    const actions = [];
+    if (entry.type === 'system') {
+      actions.push({ label: '复制一份', action: () => duplicatePreset(entry) });
+    } else {
+      actions.push({ label: '改名', action: () => openRenameModal(entry.id) });
+      actions.push({ label: '删除', action: () => deletePreset(entry.id), danger: true });
+    }
+    actions.push({ label: '左右翻转', action: () => applyPresetTransform(entry, 'flipX') });
+    actions.push({ label: '顺时针旋转 90°', action: () => applyPresetTransform(entry, 'rotateCW') });
+
+    actions.forEach(({ label, action, danger }) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = danger ? 'preset-action-menu-item is-danger' : 'preset-action-menu-item';
+      button.textContent = label;
+      button.setAttribute('role', 'menuitem');
+      button.addEventListener('click', (event) => {
         event.stopPropagation();
-        onClick();
-      }
+        closePresetActionMenu();
+        action();
+      });
+      menu.appendChild(button);
     });
-    return control;
+
+    document.body.appendChild(menu);
+    const rect = anchor.getBoundingClientRect();
+    const menuWidth = 170;
+    const menuHeight = actions.length * 34 + 12;
+    const viewportWidth = Number(window.innerWidth) || 1200;
+    const viewportHeight = Number(window.innerHeight) || 800;
+    const left = Math.min(Math.max(8, rect.left), Math.max(8, viewportWidth - menuWidth - 8));
+    const top = rect.bottom + menuHeight + 8 <= viewportHeight ? rect.bottom + 4 : rect.top - menuHeight - 4;
+    menu.style.left = `${left}px`;
+    menu.style.top = `${Math.max(8, top)}px`;
+    state.presetMenu = menu;
+    state.presetMenuButton = anchor;
   }
 
   function bindPresetSelection(card, entry, check) {
@@ -903,24 +1424,6 @@
     });
   }
 
-  function makeTransformButton(label, symbol, entry, axis) {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'preset-transform';
-    button.textContent = symbol;
-    button.title = label;
-    button.setAttribute('aria-label', `${entry.label}${label}`);
-    button.addEventListener('pointerdown', (event) => event.stopPropagation());
-    button.addEventListener('click', (event) => {
-      event.stopPropagation();
-      const current = state.presetTransforms[entry.key] || { flipX: false, flipY: false };
-      current[axis] = !current[axis];
-      state.presetTransforms[entry.key] = current;
-      renderPresetLibrary();
-    });
-    return button;
-  }
-
   function renderPatternThumb(canvas, pattern) {
     const ctx = canvas.getContext('2d');
     const width = canvas.width;
@@ -930,7 +1433,7 @@
     const cell = Math.min((width - 28) / pattern.width, (height - 24) / pattern.height);
     const startX = (width - cell * pattern.width) / 2;
     const startY = (height - cell * pattern.height) / 2;
-    ctx.fillStyle = '#54f1d2';
+    ctx.fillStyle = viewTools.colors.cell;
     pattern.cells.forEach(([x, y]) => {
       ctx.fillRect(startX + x * cell + 0.8, startY + y * cell + 0.8, Math.max(1, cell - 1.6), Math.max(1, cell - 1.6));
     });
@@ -988,6 +1491,7 @@
 
   // ===== 重命名自定义预设 =====
   function openRenameModal(id) {
+    viewTools.clearKeys();
     const preset = state.customPresets.find((item) => item.id === id);
     if (!preset) return;
 
@@ -1281,6 +1785,7 @@
 
   // ===== 形状管理弹窗 =====
   function openShapeManager() {
+    viewTools.clearKeys();
     if (els.shapeManagerModal.classList.contains('is-open')) return;
     renderShapeManager();
     els.shapeManagerModal.classList.add('is-open');
@@ -1425,6 +1930,7 @@
   }
 
   function showEditor() {
+    viewTools.clearKeys();
     closeShapeManager();
     drawEditor();
     els.editorModal.classList.add('is-open');
@@ -1548,7 +2054,7 @@
     const cellWidth = width / EDITOR_COLS;
     const cellHeight = height / EDITOR_ROWS;
 
-    editorCtx.fillStyle = '#54f1d2';
+    editorCtx.fillStyle = viewTools.colors.cell;
     for (let y = 0; y < EDITOR_ROWS; y += 1) {
       for (let x = 0; x < EDITOR_COLS; x += 1) {
         if (!state.editorGrid[y * EDITOR_COLS + x]) continue;
@@ -1601,6 +2107,7 @@
       editing.width = shape.width;
       editing.height = shape.height;
       editing.cells = shape.cells;
+      delete state.presetTransforms[`custom:${editing.id}`];
       persistCustomPresets();
       renderPresetLibrary();
       closeEditor();
@@ -1652,7 +2159,14 @@
   }
 
   function handleKeydown(event) {
+    if (event.key === 'Escape' && els.replayConfirmModal.classList.contains('is-open')) {
+      cancelReplayImport(); return;
+    }
     if (event.key === 'Escape') {
+      if (state.presetMenu) {
+        closePresetActionMenu();
+        return;
+      }
       if (els.mutationModal.classList.contains('is-open')) {
         cancelMutationSettings();
         return;
@@ -1676,22 +2190,24 @@
     }
 
     // 弹窗打开期间只允许编辑参数，游戏快捷键不会改变场地或播放状态。
-    if (els.mutationModal.classList.contains('is-open')
-      || els.renameModal.classList.contains('is-open')
-      || els.shapeManagerModal.classList.contains('is-open')) return;
+    if (modalOpen()) return;
 
     const tag = event.target?.tagName;
-    const isEditable = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+    const isEditable = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || event.target?.isContentEditable;
     if (isEditable) return;
+    if (viewTools.handleKeydown(event)) return;
+    if (event.ctrlKey || event.metaKey || event.altKey) return;
 
     const key = event.key.toLowerCase();
     if (event.code === 'Space') {
       event.preventDefault();
-      toggleRunning();
-    } else if (key === 'n') {
+      if (!event.repeat) toggleRunning();
+    } else if (event.key === 'ArrowLeft') {
       event.preventDefault();
-      if (state.running) stopRunning();
-      step();
+      backwardOne();
+    } else if (key === 'n' || event.key === 'ArrowRight') {
+      event.preventDefault();
+      forwardOne();
     } else if (key === 'r') {
       event.preventDefault();
       randomize();

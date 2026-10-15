@@ -3,7 +3,9 @@
 /任务须知.md
 /给codex的交接说明.md
 /改进.txt
+/对betahistory-replay的进一步改进.txt
 /屏幕截图*.png
+/*.png
 /debug.log
 *.log
 *.tmp

@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="theme-color" content="#07131a">
-  <title>康威生命游戏</title>
+  <title>康威生命游戏 · 历史回放 Beta</title>
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
@@ -13,7 +13,8 @@
       <div class="stage-column">
         <div class="stage">
           <canvas id="gameCanvas" width="1200" height="800" aria-label="康威生命游戏画布"></canvas>
-          <div class="stage-hint">左键绘制 · 右键擦除 · 仅拖拽预设到这里</div>
+          <div class="stage-hint" id="stageHint">左键绘制 · 右键擦除 · 仅拖拽预设到这里</div>
+          <div class="coordinate-value" id="coordinateValue" hidden aria-label="鼠标网格坐标"></div>
         </div>
       </div>
 
@@ -71,23 +72,48 @@
         </div>
 
         <div class="actions-row">
+          <div class="history-controls" aria-label="历史回放">
+            <div class="history-heading"><span class="beta-badge">历史回放 Beta</span><span id="historyPosition">历史位置 0 / 0</span></div>
+            <div class="action-group history-actions">
+              <button id="backButton" type="button" disabled title="暂停并恢复上一条记录（←）">倒退一步</button>
+              <button id="reverseButton" class="toggle-button" type="button" disabled aria-pressed="false">◀ 倒放</button>
+              <button id="exitReverseButton" type="button" hidden>退出倒放</button>
+            </div>
+            <div class="history-status"><span id="historyCounts">可倒退 0 · 可前进 0</span><span id="historyMode">暂停 · 起点</span></div>
+            <div class="library-io-row">
+              <button id="exportReplayButton" class="library-io-button" type="button">导出回放</button>
+              <button id="importReplayButton" class="library-io-button" type="button">导入回放</button>
+              <input id="importReplayInput" class="library-io-input" type="file" accept=".conway-replay" aria-label="选择回放文件">
+            </div>
+          </div>
           <div class="action-group primary-actions">
             <button id="playButton" class="play-button" type="button">▶ 播放</button>
-            <button id="stepButton" type="button">单步</button>
+            <button id="stepButton" type="button" title="暂停并恢复下一条记录，最新位置执行新一代（→ / N）">前进一步</button>
             <button id="clearButton" class="danger-button" type="button">清空</button>
             <button id="randomButton" type="button">随机</button>
           </div>
           <div class="action-group secondary-actions">
             <button id="boundaryButton" class="toggle-button is-active" type="button">边界：环绕</button>
             <button id="gridButton" class="toggle-button is-active" type="button">网格线：开</button>
-            <button id="mutationButton" class="toggle-button" type="button">细胞突变：关</button>
+            <button id="mutationButton" class="toggle-button" type="button">设置</button>
           </div>
         </div>
 
-        <p class="key-help"><kbd>Space</kbd> 播放/暂停 · <kbd>N</kbd> 单步 · <kbd>R</kbd> 随机 · <kbd>C</kbd> 清空</p>
+        <p class="key-help" id="keyHelp"><kbd>Space</kbd> 播放/暂停 · <kbd>←</kbd> 倒退 · <kbd>→</kbd>/<kbd>N</kbd> 前进 · <kbd>R</kbd> 随机 · <kbd>C</kbd> 清空<br><kbd>左 Ctrl</kbd> 坐标 · <kbd>左 Shift</kbd> 放大镜</p>
       </aside>
     </section>
   </main>
+
+  <aside class="magnifier-panel" id="magnifierPanel" hidden aria-label="放大镜">
+    <div class="magnifier-heading"><strong>放大镜</strong><button id="closeMagnifierButton" type="button" aria-label="关闭放大镜">×</button></div>
+    <p class="magnifier-shortcut-hint" id="magnifierShortcutHint">左 Shift：开关放大镜（可在设置中禁用）</p>
+    <div class="magnifier-stage">
+      <canvas id="magnifierCanvas" width="600" height="360" aria-label="鼠标周围区域的放大预览"></canvas>
+      <p id="magnifierEmpty">鼠标移入主场地查看</p>
+    </div>
+    <label class="magnifier-scale" for="magnificationRange"><span>倍率</span><input id="magnificationRange" type="range" min="150" max="300" step="25" value="200"><strong id="magnificationValue">200%</strong></label>
+    <div class="magnifier-adjustments"><button id="zoomInButton" type="button">＋25%</button><button id="zoomOutButton" type="button">−25%</button></div>
+  </aside>
 
   <div class="modal" id="shapeManagerModal" role="dialog" aria-modal="true" aria-labelledby="shapeManagerTitle">
     <div class="editor-panel shape-manager-panel">
@@ -128,11 +154,47 @@
     <div class="settings-panel">
       <div class="editor-head">
         <div>
-          <h2 id="mutationTitle">细胞突变设置</h2>
-          <p>播放时每秒抽取指定数量的存活细胞，按概率执行死亡或移动突变。</p>
+          <h2 id="mutationTitle">设置</h2>
+          <p>调整显示偏好与细胞突变；保存后应用，取消会丢弃本次修改。</p>
         </div>
-        <button class="icon-button" id="closeMutationButton" type="button" aria-label="关闭突变设置">×</button>
+        <button class="icon-button" id="closeMutationButton" type="button" aria-label="关闭设置">×</button>
       </div>
+      <fieldset class="settings-section">
+        <legend>显示偏好</legend>
+        <label class="setting-toggle"><input id="showKeysSetting" type="checkbox" checked><span>显示快捷键小贴士</span></label>
+        <label class="setting-toggle"><input id="showStageHintSetting" type="checkbox" checked><span>显示画布操作提示</span></label>
+        <label class="setting-toggle"><input id="coordinatesSetting" type="checkbox" checked><span>启用左 Ctrl 坐标提示</span></label>
+        <label class="setting-toggle"><input id="magnifierShortcutSetting" type="checkbox" checked><span>启用左 Shift 放大镜快捷键</span></label>
+        <p class="settings-note">放大镜倍率在预览面板下方调整并自动保存。</p>
+      </fieldset>
+      <fieldset class="settings-section theme-settings">
+        <legend>主题颜色</legend>
+        <div class="theme-preset-colors" id="themePresetColors" role="group" aria-label="预设主题色"></div>
+        <div class="theme-custom-row">
+          <button id="themeCustomButton" class="theme-custom-button" type="button" aria-pressed="false" aria-expanded="false" aria-controls="themeCustomPanel">
+            <span class="theme-color-swatch" id="themeCustomSwatch" aria-hidden="true"></span>自定义
+          </button>
+          <div class="theme-selection"><span id="themeSelectionSwatch" aria-hidden="true"></span><span>当前选择 <strong id="themeSelectionValue"></strong></span></div>
+        </div>
+        <div class="theme-custom-panel" id="themeCustomPanel" hidden>
+          <div class="theme-spectrum" id="themeSpectrum" role="img" aria-label="自定义色卡：悬停查看 RGB，左键点击选色；也可使用下方色相条和 RGB 输入框">
+            <span class="theme-color-marker" id="themeColorMarker" aria-hidden="true"></span>
+          </div>
+          <p id="themeHoverValue" class="theme-hover-value"></p>
+          <label class="theme-hue-label" for="themeHue">色相<input id="themeHue" type="range" min="0" max="359" step="1" value="0"></label>
+          <div class="theme-rgb-inputs">
+            <label for="themeRed">R<input id="themeRed" type="number" min="0" max="255" step="1" inputmode="numeric"></label>
+            <label for="themeGreen">G<input id="themeGreen" type="number" min="0" max="255" step="1" inputmode="numeric"></label>
+            <label for="themeBlue">B<input id="themeBlue" type="number" min="0" max="255" step="1" inputmode="numeric"></label>
+          </div>
+          <p id="themeColorError" class="theme-color-error" role="status" hidden>R、G、B 请填写 0～255 的整数。</p>
+        </div>
+        <p class="settings-note">细胞与界面高亮一起换色，保留深色背景。保存后应用；自定义只保留一个颜色，新选择会覆盖旧颜色。</p>
+      </fieldset>
+      <p class="settings-note readonly-note" id="mutationLockHelp" hidden>倒放只读：可以修改显示偏好，退出倒放后才能修改突变参数。</p>
+      <fieldset class="settings-section" id="mutationFields">
+      <legend>细胞突变</legend>
+      <p class="settings-note">播放时每秒抽取存活细胞，按概率死亡或移动。</p>
       <label class="setting-toggle">
         <input id="mutationEnabled" type="checkbox">
         <span>启用细胞突变</span>
@@ -166,6 +228,7 @@
         <p class="settings-note" id="mutationRatioHelp">向左增加死亡比例，向右增加移动比例；微调按钮每次调整 1 个百分点。</p>
       </div>
       <p class="settings-note">参数和优先选项会保存在本地，细胞突变每次打开游戏时默认关闭。</p>
+      </fieldset>
       <div class="editor-actions">
         <span></span>
         <div class="right-actions">
@@ -173,6 +236,17 @@
           <button id="saveMutationButton" class="toggle-button is-active" type="button">保存设置</button>
         </div>
       </div>
+    </div>
+  </div>
+
+  <div class="modal" id="replayConfirmModal" role="dialog" aria-modal="true" aria-labelledby="replayConfirmTitle">
+    <div class="settings-panel">
+      <h2 id="replayConfirmTitle">替换当前回放？</h2>
+      <p id="replayConfirmMessage"></p>
+      <div class="editor-actions"><span></span><div class="right-actions">
+        <button id="cancelReplayButton" type="button">取消</button>
+        <button id="confirmReplayButton" class="danger-button" type="button">替换并导入</button>
+      </div></div>
     </div>
   </div>
 
@@ -200,7 +274,12 @@
     </div>
   </div>
 
-  <div class="toast" id="toast" role="status" aria-live="polite"></div>  <script src="js/platform.js"></script>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script src="js/platform.js"></script>
+  <script src="js/history.js"></script>
+  <script src="js/replay.js"></script>
+  <script src="js/theme.js"></script>
+  <script src="js/view.js"></script>
   <script src="js/script.js"></script>
 </body>
 </html>

@@ -1,6 +1,6 @@
 {
   "name": "conway-life",
-  "version": "1.5.1",
+  "version": "1.6.0-beta3",
   "description": "离线康威生命游戏，支持绘制细胞、系统图案和自定义预设。",
   "main": "electron/main.cjs",
   "author": "huajitongxue",
@@ -17,7 +17,7 @@
     "start": "electron .",
     "tauri:dev": "tauri dev",
     "tauri:portable": "tauri build --no-bundle && node scripts/copy-tauri-portable.cjs",
-    "tauri:build": "tauri build --bundles nsis,msi --ci",
+    "tauri:build": "node scripts/tauri-build.cjs",
     "tauri:check": "cargo check --manifest-path src-tauri/Cargo.toml",
     "icon": "node scripts/create-icon.cjs",
     "pack": "electron-builder --win --x64 --dir",
