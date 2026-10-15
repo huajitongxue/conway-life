@@ -167,6 +167,30 @@
         <label class="setting-toggle"><input id="magnifierShortcutSetting" type="checkbox" checked><span>启用左 Shift 放大镜快捷键</span></label>
         <p class="settings-note">放大镜倍率在预览面板下方调整并自动保存。</p>
       </fieldset>
+      <fieldset class="settings-section theme-settings">
+        <legend>主题颜色</legend>
+        <div class="theme-preset-colors" id="themePresetColors" role="group" aria-label="预设主题色"></div>
+        <div class="theme-custom-row">
+          <button id="themeCustomButton" class="theme-custom-button" type="button" aria-pressed="false" aria-expanded="false" aria-controls="themeCustomPanel">
+            <span class="theme-color-swatch" id="themeCustomSwatch" aria-hidden="true"></span>自定义
+          </button>
+          <div class="theme-selection"><span id="themeSelectionSwatch" aria-hidden="true"></span><span>当前选择 <strong id="themeSelectionValue"></strong></span></div>
+        </div>
+        <div class="theme-custom-panel" id="themeCustomPanel" hidden>
+          <div class="theme-spectrum" id="themeSpectrum" role="img" aria-label="自定义色卡：悬停查看 RGB，左键点击选色；也可使用下方色相条和 RGB 输入框">
+            <span class="theme-color-marker" id="themeColorMarker" aria-hidden="true"></span>
+          </div>
+          <p id="themeHoverValue" class="theme-hover-value"></p>
+          <label class="theme-hue-label" for="themeHue">色相<input id="themeHue" type="range" min="0" max="359" step="1" value="0"></label>
+          <div class="theme-rgb-inputs">
+            <label for="themeRed">R<input id="themeRed" type="number" min="0" max="255" step="1" inputmode="numeric"></label>
+            <label for="themeGreen">G<input id="themeGreen" type="number" min="0" max="255" step="1" inputmode="numeric"></label>
+            <label for="themeBlue">B<input id="themeBlue" type="number" min="0" max="255" step="1" inputmode="numeric"></label>
+          </div>
+          <p id="themeColorError" class="theme-color-error" role="status" hidden>R、G、B 请填写 0～255 的整数。</p>
+        </div>
+        <p class="settings-note">细胞与界面高亮一起换色，保留深色背景。保存后应用；自定义只保留一个颜色，新选择会覆盖旧颜色。</p>
+      </fieldset>
       <p class="settings-note readonly-note" id="mutationLockHelp" hidden>倒放只读：可以修改显示偏好，退出倒放后才能修改突变参数。</p>
       <fieldset class="settings-section" id="mutationFields">
       <legend>细胞突变</legend>
@@ -254,6 +278,7 @@
   <script src="js/platform.js"></script>
   <script src="js/history.js"></script>
   <script src="js/replay.js"></script>
+  <script src="js/theme.js"></script>
   <script src="js/view.js"></script>
   <script src="js/script.js"></script>
 </body>

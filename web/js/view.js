@@ -7,7 +7,8 @@
     showStageHint: true,
     coordinates: true,
     magnifierShortcut: true,
-    magnification: 200
+    magnification: 200,
+    ...globalThis.CONWAY_THEME.normalize(null)
   };
   const zoomValue = (value) => Number.isFinite(Number(value))
     ? Math.max(150, Math.min(300, Math.round(Number(value) / 25) * 25)) : 200;
@@ -20,7 +21,8 @@
       coordinates: typeof source.coordinates === 'boolean' ? source.coordinates : defaults.coordinates,
       magnifierShortcut: typeof source.magnifierShortcut === 'boolean'
         ? source.magnifierShortcut : defaults.magnifierShortcut,
-      magnification: zoomValue(source.magnification ?? 200)
+      magnification: zoomValue(source.magnification ?? 200),
+      ...globalThis.CONWAY_THEME.normalize(source)
     };
   }
 
@@ -38,6 +40,7 @@
 
   function create({ canvas, cols, rows, els, blocked, showToast }) {
     let preferences = { ...defaults };
+    let colors = globalThis.CONWAY_THEME.palette(preferences);
     let point = null;
     let leftControl = false;
     let magnifier = false;
@@ -64,6 +67,7 @@
     }
 
     function applyPreferences() {
+      colors = globalThis.CONWAY_THEME.apply(preferences);
       els.keyHelp.hidden = !preferences.showKeys;
       els.stageHint.hidden = !preferences.showStageHint;
       els.magnifierPanel.hidden = !magnifier;
@@ -179,7 +183,7 @@
     }
 
     return { bind, loadPreferences, savePreferences, handleKeydown, handleKeyup, clearKeys, clearPointer, scheduleDraw,
-      setMagnification, get preferences() { return { ...preferences }; } };
+      setMagnification, get preferences() { return { ...preferences }; }, get colors() { return { ...colors }; } };
   }
 
   globalThis.CONWAY_VIEW = { create, crop, normalizePreferences };

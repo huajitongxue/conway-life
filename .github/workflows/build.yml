@@ -83,8 +83,9 @@ jobs:
           node --check web/js/history.js
           node --check web/js/replay.js
           node --check web/js/view.js
+          node --check web/js/theme.js
           node --check electron/main.cjs
-          echo "六个脚本语法检查通过"
+          echo "七个脚本语法检查通过"
 
   # ---------------------------------------------------------------- Electron 免安装版
   electron:

@@ -120,6 +120,20 @@
     showStageHintSetting: document.getElementById('showStageHintSetting'),
     coordinatesSetting: document.getElementById('coordinatesSetting'),
     magnifierShortcutSetting: document.getElementById('magnifierShortcutSetting'),
+    themePresetColors: document.getElementById('themePresetColors'),
+    themeCustomButton: document.getElementById('themeCustomButton'),
+    themeCustomSwatch: document.getElementById('themeCustomSwatch'),
+    themeCustomPanel: document.getElementById('themeCustomPanel'),
+    themeSpectrum: document.getElementById('themeSpectrum'),
+    themeColorMarker: document.getElementById('themeColorMarker'),
+    themeHue: document.getElementById('themeHue'),
+    themeRed: document.getElementById('themeRed'),
+    themeGreen: document.getElementById('themeGreen'),
+    themeBlue: document.getElementById('themeBlue'),
+    themeHoverValue: document.getElementById('themeHoverValue'),
+    themeSelectionSwatch: document.getElementById('themeSelectionSwatch'),
+    themeSelectionValue: document.getElementById('themeSelectionValue'),
+    themeColorError: document.getElementById('themeColorError'),
     keyHelp: document.getElementById('keyHelp'),
     stageHint: document.getElementById('stageHint'),
     coordinateValue: document.getElementById('coordinateValue'),
@@ -165,6 +179,7 @@
 
   const viewTools = globalThis.CONWAY_VIEW.create({ canvas: gameCanvas, cols: COLS, rows: ROWS,
     els, blocked: modalOpen, showToast });
+  const themeTools = globalThis.CONWAY_THEME.create({ els });
 
   function modalOpen() {
     return state.replayIoBusy || [els.mutationModal, els.renameModal, els.shapeManagerModal, els.editorModal,
@@ -361,6 +376,7 @@
       closePresetActionMenu();
     });
     viewTools.bind();
+    themeTools.bind();
     window.addEventListener('blur', () => finishGameDrawing(false));
 
     els.playButton.addEventListener('click', toggleRunning);
@@ -808,6 +824,7 @@
     if (state.running) stopRunning();
     viewTools.clearKeys();
     const preferences = viewTools.preferences;
+    themeTools.open(preferences);
     els.showKeysSetting.checked = preferences.showKeys;
     els.showStageHintSetting.checked = preferences.showStageHint;
     els.coordinatesSetting.checked = preferences.coordinates;
@@ -839,9 +856,17 @@
 
   function saveMutationSettings() {
     if (state.replayIoBusy) return;
+    const theme = themeTools.readDraft();
+    if (!theme) return;
+    const previousColor = viewTools.colors.cell;
     viewTools.savePreferences({ ...viewTools.preferences, showKeys: els.showKeysSetting.checked,
       showStageHint: els.showStageHintSetting.checked, coordinates: els.coordinatesSetting.checked,
-      magnifierShortcut: els.magnifierShortcutSetting.checked });
+      magnifierShortcut: els.magnifierShortcutSetting.checked, ...theme });
+    if (viewTools.colors.cell !== previousColor) {
+      draw();
+      drawEditor();
+      renderPresetLibrary();
+    }
     ensureHistory();
     const before = globalThis.CONWAY_HISTORY.fields
       .filter((field) => field.startsWith('mutation'))
@@ -1047,7 +1072,7 @@
     const showGrid = state.showGrid && Math.min(cellWidth, cellHeight) >= 6;
     const gap = showGrid ? Math.min(0.9, Math.max(0.35, cellWidth * 0.06)) : 0;
 
-    gameCtx.fillStyle = '#54f1d2';
+    gameCtx.fillStyle = viewTools.colors.cell;
     for (let y = 0; y < ROWS; y += 1) {
       for (let x = 0; x < COLS; x += 1) {
         if (!state.grid[y * COLS + x]) continue;
@@ -1078,7 +1103,7 @@
   function drawPreview(preview, cellWidth, cellHeight) {
     const placement = getPlacementCells(preview.pattern, preview.anchor.x, preview.anchor.y);
     const gap = state.showGrid && Math.min(cellWidth, cellHeight) >= 6 ? 0.7 : 0;
-    gameCtx.fillStyle = 'rgba(84, 241, 210, 0.36)';
+    gameCtx.fillStyle = viewTools.colors.preview;
     placement.forEach(({ x, y }) => {
       gameCtx.fillRect(x * cellWidth + gap, y * cellHeight + gap, Math.max(1, cellWidth - gap * 2), Math.max(1, cellHeight - gap * 2));
     });
@@ -1408,7 +1433,7 @@
     const cell = Math.min((width - 28) / pattern.width, (height - 24) / pattern.height);
     const startX = (width - cell * pattern.width) / 2;
     const startY = (height - cell * pattern.height) / 2;
-    ctx.fillStyle = '#54f1d2';
+    ctx.fillStyle = viewTools.colors.cell;
     pattern.cells.forEach(([x, y]) => {
       ctx.fillRect(startX + x * cell + 0.8, startY + y * cell + 0.8, Math.max(1, cell - 1.6), Math.max(1, cell - 1.6));
     });
@@ -2029,7 +2054,7 @@
     const cellWidth = width / EDITOR_COLS;
     const cellHeight = height / EDITOR_ROWS;
 
-    editorCtx.fillStyle = '#54f1d2';
+    editorCtx.fillStyle = viewTools.colors.cell;
     for (let y = 0; y < EDITOR_ROWS; y += 1) {
       for (let x = 0; x < EDITOR_COLS; x += 1) {
         if (!state.editorGrid[y * EDITOR_COLS + x]) continue;
