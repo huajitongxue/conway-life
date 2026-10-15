@@ -2,13 +2,9 @@
 
 用原生 HTML、CSS 和 JavaScript 实现的康威生命游戏。绘制细胞、拖拽图案，观察简单规则产生的复杂演化。
 
-> 此分支为 **历史回放 Beta**（`beta/history-replay`）。倒退、倒放和历史重播等待用户测试验收，尚未合并到主分支。下方在线试玩链接对应已发布的正式版；测试本分支请打开本地网页，或使用从此分支构建的 Beta 产物（见 [v1.6.0-beta3 预发布](https://github.com/huajitongxue/conway-life/releases/tag/v1.6.0-beta3)）。
-
-此分支包含坐标、放大镜、统一设置、回放文件交换及倒放只读。本轮新增主题颜色设置，当前颜色功能尚未进入 Release。
-
 **在线试玩**：<https://huajitongxue.github.io/conway-life/> —— 直接用浏览器打开即可游玩，无需下载或安装。
 
-当前版本：**v1.6.0-beta3**（预发布，含历史回放）。最新的正式版仍是 **v1.5.1**。
+当前版本：**v1.6.0**。历史回放、回放文件、坐标与放大镜、主题颜色等功能已合回主分支并正式发布。
 
 已发布的桌面版可在 [GitHub Releases](https://github.com/huajitongxue/conway-life/releases) 下载。Electron `.exe` 为免安装程序；Tauri `setup.exe` 和 `.msi` 是两种安装程序，选择一种即可。
 
@@ -28,7 +24,7 @@ git clone https://github.com/huajitongxue/conway-life.git
 
 桌面版使用 Electron，启动后默认最大化，直接显示游戏，没有浏览器的标签页、地址栏和收藏夹栏。按 `F11` 切换全屏，按 `Esc` 退出全屏；其余操作与网页版一致。
 
-打包产物为 `dist/Conway-Life-1.6.0-beta3-Windows-x64.exe`，适用于 Windows 10 / 11 的 x64 系统。双击即可运行，无需安装 Node.js、浏览器或其他依赖。免安装程序启动时会解压到临时目录，首次打开可能稍慢。
+打包产物为 `dist/Conway-Life-1.6.0-Windows-x64.exe`，适用于 Windows 10 / 11 的 x64 系统。双击即可运行，无需安装 Node.js、浏览器或其他依赖。免安装程序启动时会解压到临时目录，首次打开可能稍慢。
 
 自定义预设保存在 `%APPDATA%\conway-life`，移动或替换 `.exe` 不会清除预设。网页版和桌面版的存储相互独立，已有浏览器预设不会自动迁移。
 
@@ -44,13 +40,12 @@ git clone https://github.com/huajitongxue/conway-life.git
 
 Tauri 各版本都使用系统 WebView2。Windows 11 自带，通常不用管；Windows 10 需要机器上装过 Microsoft Edge（绝大多数机器都有）。确实缺少 WebView2 时，安装程序会联网下载并安装运行时，不内置离线 WebView2 安装包；**免安装单文件不会自动装运行时，缺 WebView2 时会启动失败**，此时请用安装版或先手动装 WebView2 Runtime。装好之后游戏本身可以离线运行。
 
-v1.6.0-beta3 的产物已作为 [v1.6.0-beta3 预发布](https://github.com/huajitongxue/conway-life/releases/tag/v1.6.0-beta3) 的附件发布，本地产物位于 `dist/`：
+v1.6.0 的产物已作为 [v1.6.0 Release](https://github.com/huajitongxue/conway-life/releases/tag/v1.6.0) 的附件发布，本地产物位于 `dist/`：
 
-- `Conway-Life-1.6.0-beta3-Windows-x64.exe`（Electron 免安装版）
-- `Conway-Life-1.6.0-beta3-Tauri-Windows-x64-portable.exe`（Tauri 免安装单文件）
-- `Conway-Life-1.6.0-beta3-Tauri-Windows-x64-setup.exe`
-
-这一版**没有 MSI**：MSI 用的 WiX 要求预发布标识必须是纯数字，`1.6.0-beta3` 会被拒绝，NSIS 则没有这个限制。正式版 v1.5.1 仍然两种安装格式都有。
+- `Conway-Life-1.6.0-Windows-x64.exe`（Electron 免安装版）
+- `Conway-Life-1.6.0-Tauri-Windows-x64-portable.exe`（Tauri 免安装单文件）
+- `Conway-Life-1.6.0-Tauri-Windows-x64-setup.exe`（Tauri NSIS 安装版）
+- `Conway-Life-1.6.0-Tauri-Windows-x64.msi`（Tauri MSI 安装版）
 
 开始 Tauri 开发前，需要安装 Rust stable-msvc、Microsoft C++ Build Tools 和 WebView2。运行开发版：
 
@@ -121,7 +116,7 @@ npm run dist
 
 ### 发布约定
 
-后续打包好的桌面程序统一作为 GitHub Release 附件发布：Electron 免安装版、Tauri 免安装单文件和 Tauri 安装版会放在同一个 Release 中。代码仓库保留源码和构建配置，不提交 `dist/`、`node_modules/` 或本地测试文件。本次 v1.6.0-beta3 的源码已提交并推送，三个可执行文件和校验文件（共四个附件）已随 `v1.6.0-beta3` 标签以预发布形式发布（预发布标识不是纯数字时不含 MSI，原因见上）。
+后续打包好的桌面程序统一作为 GitHub Release 附件发布：Electron 免安装版、Tauri 免安装单文件和 Tauri 安装版会放在同一个 Release 中。代码仓库保留源码和构建配置，不提交 `dist/`、`node_modules/` 或本地测试文件。本次 v1.6.0 的源码已提交并推送，三个可执行文件和校验文件（共四个附件）已随 `v1.6.0` 标签以预发布形式发布（预发布标识不是纯数字时不含 MSI，原因见上）。
 
 每次发布保持 `VERSION`、npm 元数据、Rust 元数据、Tauri 配置和 README 的版本号一致，写好 `docs/releases/vX.Y.Z.md`，提交并推送源码，最后推送对应的 `vX.Y.Z` 标签。**推送标签后由 GitHub Actions 自动完成打包和发布**（配置见 `.github/workflows/build.yml`）：它会先核对各文件版本号、标签和发布说明是否齐全，再在 GitHub 的 Windows 环境上打包 Electron 免安装版和 Tauri 的免安装单文件 / NSIS / MSI，算出校验值并创建或更新 Release，上传四个可执行文件和校验文件（共五个附件）。整个过程不需要本地构建，也不需要开着电脑。
 
@@ -165,7 +160,7 @@ npm run dist
 
 普通模式绘制时会暂停演化和突变，正常松开鼠标后恢复原来的正向播放；原来暂停的保持暂停。取消手势、失去指针捕获或窗口失焦时，保留已绘制内容并保持暂停。普通模式允许播放期间拖放预设。手动绘制、预设放置和突变不会推进代数；最新位置的前进一步或自动演化才会推进代数。清空和随机填充会将代数重置为 0，并可以通过倒退撤回。倒放只读模式中不允许修改场地。
 
-### 历史回放 Beta
+### 历史回放
 
 控制区提供“倒退一步”“倒放”和“前进一步”。倒放沿用速度滑块，每一步恢复一条历史，到最早保留的位置自动暂停；再次点击倒放或按空格也能暂停。倒放是独立只读模式：暂停、抵达起点及前后单步均不会解锁，“前进一步”到末端不会生成新一代。按“退出倒放”解除只读并保持暂停，再播放时从历史位置正向重播到最新位置，然后继续正常演化。
 
@@ -195,7 +190,7 @@ npm run dist
 
 右侧“设置”内可分别关闭快捷键小贴士、画布操作提示、Ctrl 坐标提示和左 Shift 放大镜快捷键，并配置细胞突变。显示偏好及倍率保存在本地，放大镜启动时默认关闭。关闭左 Shift 快捷键并保存时，已打开的放大镜会一并关闭。设置采用保存／取消草稿；保存外观选项不改变历史或永久突变参数。倒放时突变区域仅能查看，但显示选项仍可保存。游戏快捷键在所有弹窗和文本输入区域中暂停生效。
 
-Beta 测试建议先使用振荡图案，前进数代后逐步倒退／重播；再启用突变确认随机过程能原样回看，并尝试在过去绘制、清空和放置预设，检查新分支行为。长时间运行时关注记录满容量后的响应速度和内存使用。当前只完成静态与纯逻辑检查，真实浏览器和桌面的操作体验由用户测试确认。
+建议先使用振荡图案，前进数代后逐步倒退／重播；再启用突变确认随机过程能原样回看，并尝试在过去绘制、清空和放置预设，检查新分支行为。长时间运行时留意记录满容量后的响应速度和内存使用。
 
 ### 主题颜色
 
@@ -282,7 +277,7 @@ conway-life/
 │   │   └── style.css   # 深色主题、布局和响应式样式
 │   └── js/
 │       ├── platform.js # 浏览器 / Tauri 平台适配
-│       ├── history.js  # Beta 快照、环形历史及前后导航
+│       ├── history.js  # 快照、环形历史及前后导航
 │       ├── replay.js   # 二进制回放格式与严格校验
 │       ├── theme.js    # 预设色、自定义 RGB 选色及主题显示
 │       ├── view.js     # 坐标、放大镜及显示偏好
@@ -309,7 +304,7 @@ conway-life/
 
 网页版无需打包，修改 `web/` 中的 HTML、CSS 或 JavaScript 后刷新页面即可；本地自用执行 `npm run tauri:portable`。`script.js` 按初始化、历史衔接、逻辑更新、画布绘制、预设管理、编辑器和 UI 事件划分，历史存储独立于游戏界面。
 
-此 Beta 分支尚未合并回主分支，功能等待验收。版本号已独立推进为 **1.6.0-beta3**，因此构建产物会带上 beta 命名，不会覆盖正式版产物。发布沿用现有 GitHub Actions 流程：推 `v1.6.0-beta3` 标签即自动构建三种交付文件并创建 Release，**工作流会按版本号里的 `-` 后缀自动把这次发布标记为预发布（prerelease）**，因此它不会取代 v1.5.1 成为 GitHub 上的 Latest release。验收通过后把功能合回主分支，再按正式版本号发布。
+发布沿用现有 GitHub Actions 流程：推 `v1.6.0` 标签即自动构建四种交付文件并创建 Release。版本号里没有 `-` 后缀，所以**不会被标记为预发布**，它会取代 v1.5.1 成为 GitHub 上的 Latest release；MSI 也因为在没有非数字预发布标识而能正常打出。注意 GitHub Pages 跟随 `main` 分支，因此把这个分支推上去后线上网页版会同步变成 v1.6.0。
 
 ## 开源协议
 
