@@ -4,6 +4,11 @@
 /给codex的交接说明.md
 /改进.txt
 /对betahistory-replay的进一步改进.txt
+
+# 未发布的发布说明草稿：v1.6.1 还没发，先留在本地。
+# ⚠️ 真要发 v1.6.1 时必须先删掉这一行并重新 git add，否则 CI 的 verify 会因为「缺少 docs/releases/v1.6.1.md」直接失败。
+/docs/releases/v1.6.1.md
+
 /屏幕截图*.png
 /*.png
 /debug.log
