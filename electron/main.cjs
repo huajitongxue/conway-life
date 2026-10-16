@@ -7,7 +7,7 @@ const { pathToFileURL } = require('node:url');
 
 const APP_SCHEME = 'conway';
 const APP_URL = `${APP_SCHEME}://app/index.html`;
-const WINDOW_TITLE = '康威生命游戏 · 历史回放 Beta · F11 全屏';
+const WINDOW_TITLE = '康威生命游戏 · F11 全屏';
 let mainWindow = null;
 
 // 固定页面来源，让便携程序解压路径变化时仍能读取原来的自定义预设。
