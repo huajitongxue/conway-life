@@ -38,6 +38,9 @@
     running: false,
     playDirection: 'forward',
     reverseReadonly: false,
+    historyEnabled: false,
+    historyDisablePending: false,
+    historyDisableResume: null,
     replayIoBusy: false,
     replayIoKind: null,
     replayIoId: 0,
@@ -85,6 +88,11 @@
     playButton: document.getElementById('playButton'),
     stepButton: document.getElementById('stepButton'),
     backButton: document.getElementById('backButton'),
+    historyRecordingButton: document.getElementById('historyRecordingButton'),
+    historyRecordingHelp: document.getElementById('historyRecordingHelp'),
+    historyDisableModal: document.getElementById('historyDisableModal'),
+    confirmHistoryDisableButton: document.getElementById('confirmHistoryDisableButton'),
+    cancelHistoryDisableButton: document.getElementById('cancelHistoryDisableButton'),
     reverseButton: document.getElementById('reverseButton'),
     exitReverseButton: document.getElementById('exitReverseButton'),
     exportReplayButton: document.getElementById('exportReplayButton'),
@@ -182,12 +190,12 @@
   const themeTools = globalThis.CONWAY_THEME.create({ els });
 
   function modalOpen() {
-    return state.replayIoBusy || [els.mutationModal, els.renameModal, els.shapeManagerModal, els.editorModal,
+    return state.replayIoBusy || state.historyDisablePending || [els.mutationModal, els.renameModal, els.shapeManagerModal, els.editorModal,
       els.replayConfirmModal].some((modal) => modal.classList.contains('is-open'));
   }
 
   function boardLocked() {
-    return state.reverseReadonly || state.replayIoBusy;
+    return state.reverseReadonly || state.replayIoBusy || state.historyDisablePending;
   }
 
   // ===== 回放文件 =====
@@ -222,7 +230,7 @@
   }
 
   async function exportReplay() {
-    if (state.replayIoBusy) return;
+    if (state.replayIoBusy || state.historyDisablePending || !state.historyEnabled || !history.status().length) return;
     beginReplayIo('export');
     try {
       const bytes = globalThis.CONWAY_REPLAY.encode(history.exportTimeline(), COLS, ROWS);
@@ -260,6 +268,7 @@
   }
 
   async function importReplayFile(file) {
+    if (state.historyDisablePending) return;
     if (state.reverseReadonly || (state.replayIoBusy && state.replayIoKind !== 'import')) return;
     if (state.replayReading || state.pendingReplay) return;
     if (!file) { if (state.replayIoKind === 'import') finishReplayIo(true); return; }
@@ -273,7 +282,7 @@
       state.pendingReplay = globalThis.CONWAY_REPLAY.decode(bytes, COLS, ROWS, history.status().capacity);
       state.replayReading = false;
       els.replayConfirmMessage.textContent = '将用 ' + state.pendingReplay.entries.length
-        + ' 条记录替换当前场地和历史，导入后暂停在最早记录。预设库和永久设置保持不变。';
+        + ' 条记录替换当前场地和历史，导入后开启历史记录并暂停在最早记录。预设库和永久设置保持不变。';
       els.replayConfirmModal.classList.add('is-open');
       els.cancelReplayButton.focus();
     } catch (error) {
@@ -292,6 +301,7 @@
     if (state.replayIoKind !== 'import' || !state.pendingReplay) return;
     try {
       const first = history.replaceTimeline(state.pendingReplay);
+      state.historyEnabled = true;
       restoreHistory(first);
       finishReplayIo(false);
       showToast('已导入回放，暂停在最早记录');
@@ -382,6 +392,16 @@
     els.playButton.addEventListener('click', toggleRunning);
     els.stepButton.addEventListener('click', forwardOne);
     els.backButton.addEventListener('click', backwardOne);
+    els.historyRecordingButton.addEventListener('click', toggleHistoryRecording);
+    els.historyRecordingButton.addEventListener('keydown', (event) => {
+      // 保留按钮的原生键盘点击，避免空格同时触发游戏播放。
+      if (event.key === ' ' || event.key === 'Enter') event.stopPropagation();
+    });
+    els.confirmHistoryDisableButton.addEventListener('click', confirmHistoryDisable);
+    els.cancelHistoryDisableButton.addEventListener('click', cancelHistoryDisable);
+    els.historyDisableModal.addEventListener('click', (event) => {
+      if (event.target === els.historyDisableModal) cancelHistoryDisable();
+    });
     els.reverseButton.addEventListener('click', toggleReverse);
     els.exitReverseButton.addEventListener('click', exitReverse);
     els.exportReplayButton.addEventListener('click', exportReplay);
@@ -467,6 +487,64 @@
   }
 
   // ===== 历史记录与导航 =====
+  function toggleHistoryRecording() {
+    if (modalOpen()) return;
+    finishGameDrawing(false);
+    state.historyNavigationId += 1;
+    state.preview = null;
+    state.presetDrag = null;
+    if (!state.historyEnabled) {
+      history.reset(snapshotState());
+      state.historyEnabled = true;
+      updatePlayButtons();
+      draw();
+      showToast('历史记录已开启，从当前场地开始记录');
+      return;
+    }
+    state.historyDisableResume = { running: state.running, direction: state.playDirection };
+    stopRunning();
+    state.historyDisablePending = true;
+    viewTools.clearKeys();
+    closePresetActionMenu();
+    els.historyDisableModal.classList.add('is-open');
+    updatePlayButtons();
+    draw();
+    els.cancelHistoryDisableButton.focus();
+  }
+
+  function cancelHistoryDisable() {
+    if (!state.historyDisablePending) return;
+    const previous = state.historyDisableResume;
+    state.historyDisablePending = false;
+    state.historyDisableResume = null;
+    els.historyDisableModal.classList.remove('is-open');
+    updatePlayButtons();
+    els.historyRecordingButton.focus();
+    if (previous?.running) startRunning(previous.direction);
+  }
+
+  function confirmHistoryDisable() {
+    if (!state.historyDisablePending) return;
+    const previous = state.historyDisableResume;
+    const wasReadonly = state.reverseReadonly;
+    state.historyEnabled = false;
+    history.clear();
+    state.historyDisablePending = false;
+    state.historyDisableResume = null;
+    state.reverseReadonly = false;
+    state.playDirection = 'forward';
+    state.historyNavigationId += 1;
+    state.preview = null;
+    state.presetDrag = null;
+    els.historyDisableModal.classList.remove('is-open');
+    updatePlayButtons();
+    draw();
+    els.historyRecordingButton.focus();
+    // 从倒放退出后保持暂停；正常正向游玩则恢复此前播放。
+    if (previous?.running && !wasReadonly) startRunning();
+    showToast('历史记录已关闭，已有历史已清空');
+  }
+
   function snapshotState() {
     const snapshot = { cellAges: state.cellAges };
     globalThis.CONWAY_HISTORY.fields.forEach((field) => { snapshot[field] = state[field]; });
@@ -474,11 +552,11 @@
   }
 
   function ensureHistory() {
-    if (!history.status().length) history.reset(snapshotState());
+    if (state.historyEnabled && !history.status().length) history.reset(snapshotState());
   }
 
   function recordHistory(operation) {
-    if (boardLocked()) return false;
+    if (!state.historyEnabled || boardLocked()) return false;
     const hadFuture = history.status().forward > 0;
     const changed = history.append(snapshotState(), operation);
     // 从历史中编辑出新分支后，正放立即转为实时演化。
@@ -509,7 +587,7 @@
   }
 
   function backwardOne() {
-    if (state.replayIoBusy) return;
+    if (state.replayIoBusy || state.historyDisablePending || !state.historyEnabled) return;
     finishGameDrawing(false);
     stopRunning();
     ensureHistory();
@@ -517,14 +595,14 @@
   }
 
   function forwardOne() {
-    if (state.replayIoBusy) return;
+    if (state.replayIoBusy || state.historyDisablePending) return;
     finishGameDrawing(false);
     stopRunning();
     step();
   }
 
   function toggleReverse() {
-    if (state.replayIoBusy) return;
+    if (state.replayIoBusy || state.historyDisablePending || !state.historyEnabled) return;
     finishGameDrawing(false);
     if (state.running && state.playDirection === 'reverse') stopRunning();
     else startRunning('reverse');
@@ -560,7 +638,7 @@
 
   // ===== 游戏逻辑 =====
   function step() {
-    if (state.replayIoBusy) return;
+    if (state.replayIoBusy || state.historyDisablePending) return;
     finishGameDrawing(false);
     ensureHistory();
     if (history.status().forward) {
@@ -622,7 +700,7 @@
   }
 
   function startRunning(direction = 'forward') {
-    if (state.replayIoBusy) return;
+    if (state.replayIoBusy || state.historyDisablePending || (direction === 'reverse' && !state.historyEnabled)) return;
     finishGameDrawing(false);
     ensureHistory();
     if (direction === 'reverse') {
@@ -677,13 +755,20 @@
 
   function updatePlayButtons() {
     const isRunning = state.running;
+    const busy = state.replayIoBusy || state.historyDisablePending;
+    els.historyRecordingButton.textContent = state.historyEnabled ? '历史回放：开' : '历史回放：关';
+    els.historyRecordingButton.setAttribute('aria-checked', String(state.historyEnabled));
+    els.historyRecordingButton.classList.toggle('is-active', state.historyEnabled);
+    els.historyRecordingButton.disabled = busy;
+    els.historyRecordingHelp.textContent = state.historyEnabled
+      ? '正在保留历史；点击关闭前会确认并清空记录。'
+      : '未开启记录；点击后从当前场地开始记录。';
+    els.historyRecordingButton.title = els.historyRecordingHelp.textContent;
     els.playButton.textContent = isRunning ? 'Ⅱ 暂停' : state.reverseReadonly ? '◀ 继续倒放' : '▶ 播放';
     els.playButton.classList.toggle('is-running', isRunning);
     els.playButton.classList.toggle('is-paused', !isRunning);
     const position = history.status();
     const reversing = isRunning && state.playDirection === 'reverse';
-    els.backButton.disabled = position.backward === 0;
-    els.reverseButton.disabled = position.backward === 0 && !reversing;
     els.reverseButton.textContent = reversing ? 'Ⅱ 停止倒放' : '◀ 倒放';
     els.reverseButton.classList.toggle('is-active', reversing);
     els.reverseButton.setAttribute('aria-pressed', String(reversing));
@@ -691,21 +776,23 @@
     els.clearButton.disabled = boardLocked();
     els.randomButton.disabled = boardLocked();
     els.boundaryButton.disabled = boardLocked();
-    els.stepButton.disabled = state.replayIoBusy || (state.reverseReadonly && !position.forward);
+    els.stepButton.disabled = busy || (state.reverseReadonly && !position.forward);
     els.importReplayButton.disabled = boardLocked();
-    els.exportReplayButton.disabled = state.replayIoBusy;
-    els.playButton.disabled = state.replayIoBusy || (state.reverseReadonly && !isRunning && !position.backward);
-    els.backButton.disabled = state.replayIoBusy || !position.backward;
-    els.reverseButton.disabled = state.replayIoBusy || (!position.backward && !reversing);
-    els.exitReverseButton.disabled = state.replayIoBusy;
-    els.historyPosition.textContent = `历史位置 ${Math.max(0, position.cursor)} / ${Math.max(0, position.length - 1)}`;
+    els.exportReplayButton.disabled = busy || !state.historyEnabled || !position.length;
+    els.playButton.disabled = busy || (state.reverseReadonly && !isRunning && !position.backward);
+    els.backButton.disabled = busy || !state.historyEnabled || !position.backward;
+    els.reverseButton.disabled = busy || !state.historyEnabled || (!position.backward && !reversing);
+    els.exitReverseButton.disabled = busy;
+    els.historyPosition.textContent = state.historyEnabled
+      ? `历史位置 ${Math.max(0, position.cursor)} / ${Math.max(0, position.length - 1)}` : '历史记录已关闭';
     els.historyCounts.textContent = `可倒退 ${position.backward} · 可前进 ${position.forward}`;
     const mode = state.drawing ? '绘制中' : !isRunning ? '暂停'
       : reversing ? '倒放中' : position.forward ? '历史重播' : '演化中';
     const operations = { initial: '起点', evolution: '演化', mutation: '突变', draw: '绘制',
       erase: '擦除', preset: '预设放置', clear: '清空', random: '随机', boundary: '边界切换', settings: '突变设置' };
     els.historyMode.textContent = (state.reverseReadonly ? '倒放只读 · ' : '') + (state.replayIoBusy ? '文件处理中 · ' : '') + mode
-      + ' · ' + (operations[position.operation] || '历史状态') + (position.dropped ? ' · 早期记录已淘汰' : '');
+      + ' · ' + (!state.historyEnabled ? '不记录历史' : operations[position.operation] || '历史状态')
+      + (position.dropped ? ' · 早期记录已淘汰' : '');
   }
 
   function setSpeed(value) {
@@ -2159,6 +2246,13 @@
   }
 
   function handleKeydown(event) {
+    if (state.historyDisablePending) {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        cancelHistoryDisable();
+      }
+      return;
+    }
     if (event.key === 'Escape' && els.replayConfirmModal.classList.contains('is-open')) {
       cancelReplayImport(); return;
     }

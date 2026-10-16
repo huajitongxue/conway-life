@@ -32,6 +32,15 @@
     let dropped = 0;
     const entryAt = (position) => entries[(head + position) % capacity];
 
+    // 关闭记录时释放所有快照引用，不能用单帧重置替代清空。
+    function clear() {
+      entries.fill(undefined);
+      head = 0;
+      length = 0;
+      cursor = -1;
+      dropped = 0;
+    }
+
     function reset(snapshot) {
       entries.fill(undefined);
       head = 0;
@@ -103,7 +112,7 @@
       return copySnapshot(entries[0].snapshot);
     }
 
-    return { reset, append, backward: () => move(-1), forward: () => move(1), status, exportTimeline, replaceTimeline };
+    return { clear, reset, append, backward: () => move(-1), forward: () => move(1), status, exportTimeline, replaceTimeline };
   }
 
   globalThis.CONWAY_HISTORY = { create, fields: Object.freeze(fields) };

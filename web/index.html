@@ -73,15 +73,19 @@
 
         <div class="actions-row">
           <div class="history-controls" aria-label="历史回放">
-            <div class="history-heading"><span class="history-badge">历史回放</span><span id="historyPosition">历史位置 0 / 0</span></div>
+            <div class="history-heading">
+              <button id="historyRecordingButton" class="toggle-button history-recording-toggle" type="button" role="switch" aria-checked="false" aria-describedby="historyRecordingHelp" aria-label="历史回放记录开关" title="未开启记录；点击后从当前场地开始记录。">历史回放：关</button>
+              <span id="historyPosition">历史记录已关闭</span>
+            </div>
+            <span id="historyRecordingHelp" hidden>未开启记录；点击后从当前场地开始记录。</span>
             <div class="action-group history-actions">
               <button id="backButton" type="button" disabled title="暂停并恢复上一条记录（←）">倒退一步</button>
               <button id="reverseButton" class="toggle-button" type="button" disabled aria-pressed="false">◀ 倒放</button>
               <button id="exitReverseButton" type="button" hidden>退出倒放</button>
             </div>
-            <div class="history-status"><span id="historyCounts">可倒退 0 · 可前进 0</span><span id="historyMode">暂停 · 起点</span></div>
+            <div class="history-status"><span id="historyCounts">可倒退 0 · 可前进 0</span><span id="historyMode">暂停 · 不记录历史</span></div>
             <div class="library-io-row">
-              <button id="exportReplayButton" class="library-io-button" type="button">导出回放</button>
+              <button id="exportReplayButton" class="library-io-button" type="button" disabled>导出回放</button>
               <button id="importReplayButton" class="library-io-button" type="button">导入回放</button>
               <input id="importReplayInput" class="library-io-input" type="file" accept=".conway-replay" aria-label="选择回放文件">
             </div>
@@ -236,6 +240,17 @@
           <button id="saveMutationButton" class="toggle-button is-active" type="button">保存设置</button>
         </div>
       </div>
+    </div>
+  </div>
+
+  <div class="modal" id="historyDisableModal" role="dialog" aria-modal="true" aria-labelledby="historyDisableTitle" aria-describedby="historyDisableMessage">
+    <div class="settings-panel">
+      <h2 id="historyDisableTitle">关闭历史记录？</h2>
+      <p id="historyDisableMessage">关闭后将清空当前全部历史并释放快照内存，无法再倒退或导出这段回放。当前场地保留；下次开启将从当前场地重新记录。需要保留时请先取消并导出回放。</p>
+      <div class="editor-actions"><span></span><div class="right-actions">
+        <button id="cancelHistoryDisableButton" type="button">取消</button>
+        <button id="confirmHistoryDisableButton" class="danger-button" type="button">清空历史并关闭</button>
+      </div></div>
     </div>
   </div>
 
