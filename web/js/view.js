@@ -151,24 +151,51 @@
       if (!sourceRect.width || !sourceRect.height || !canvas.width || !canvas.height) return;
       const area = crop(sourceRect.width, sourceRect.height, rect.width, rect.height,
         ratioX * sourceRect.width, ratioY * sourceRect.height, preferences.magnification);
+      const offsetX = (rect.width - area.targetWidth) / 2;
+      const offsetY = (rect.height - area.targetHeight) / 2;
       ctx.imageSmoothingEnabled = false;
       ctx.drawImage(canvas,
         area.x * canvas.width / sourceRect.width, area.y * canvas.height / sourceRect.height,
         area.width * canvas.width / sourceRect.width, area.height * canvas.height / sourceRect.height,
-        (rect.width - area.targetWidth) / 2, (rect.height - area.targetHeight) / 2, area.targetWidth, area.targetHeight);
+        offsetX, offsetY, area.targetWidth, area.targetHeight);
+
+      // 按真实裁剪和留白换算鼠标位置；边缘处的准星不固定在预览中心。
+      const pointerX = offsetX + (ratioX * sourceRect.width - area.x) * area.targetWidth / area.width;
+      const pointerY = offsetY + (ratioY * sourceRect.height - area.y) * area.targetHeight / area.height;
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(pointerX - 8, pointerY);
+      ctx.lineTo(pointerX - 2, pointerY);
+      ctx.moveTo(pointerX + 2, pointerY);
+      ctx.lineTo(pointerX + 8, pointerY);
+      ctx.moveTo(pointerX, pointerY - 8);
+      ctx.lineTo(pointerX, pointerY - 2);
+      ctx.moveTo(pointerX, pointerY + 2);
+      ctx.lineTo(pointerX, pointerY + 8);
+      // 黑白双描边在亮格和暗色背景上都可见，中心留出空隙观察细胞。
+      ctx.lineCap = 'butt';
+      ctx.strokeStyle = '#000000';
+      ctx.lineWidth = 3;
+      ctx.stroke();
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.restore();
     }
 
     function bind() {
       if (bound) return;
       bound = true;
-      canvas.addEventListener('pointermove', (event) => {
+      const updatePointer = (event) => {
         const rect = canvas.getBoundingClientRect();
         if (event.clientX < rect.left || event.clientX >= rect.right || event.clientY < rect.top || event.clientY >= rect.bottom) {
           clearPointer(); return;
         }
         point = { clientX: event.clientX, clientY: event.clientY };
         scheduleDraw();
-      });
+      };
+      canvas.addEventListener('pointermove', updatePointer);
+      canvas.addEventListener('pointerdown', updatePointer);
       canvas.addEventListener('pointerleave', clearPointer);
       document.addEventListener('keyup', handleKeyup);
       window.addEventListener('blur', clearKeys);

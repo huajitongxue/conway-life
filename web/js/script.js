@@ -684,8 +684,8 @@
       return;
     }
     const brushes = state.modeId === 'wireworld'
-      ? [{ value: 1, label: '导线' }, { value: 2, label: '电子头' }, { value: 3, label: '电子尾' }, { value: 0, label: '橡皮' }]
-      : [{ value: 1, label: state.modeId === 'brain' ? '亮' : '活细胞' }, { value: 0, label: '橡皮' }];
+      ? [{ value: 1, label: '导线' }, { value: 2, label: '电子头' }, { value: 3, label: '电子尾' }]
+      : [{ value: 1, label: '亮' }, { value: 2, label: '暗色（将熄）' }];
     [els.brushPalette, els.editorBrushPalette].forEach((container) => {
       container.replaceChildren();
       const colors = globalThis.CONWAY_THEME.stateColors(viewTools.preferences, state.modeId);
@@ -1860,7 +1860,7 @@
     const mode = preset?.mode || 'conway';
     const validState = (value) => mode === 'conway' ? value === 1
       : mode === 'wireworld' ? Number.isInteger(value) && value >= 1 && value <= 3
-        : mode === 'brain' ? value === 1 : false;
+        : mode === 'brain' ? value === 1 || value === 2 : false;
     return preset && globalThis.CONWAY_AUTOMATA.modes[mode]
       && Number.isInteger(Number(preset.id)) && Number(preset.id) > 0 && Number(preset.width) > 0 && Number(preset.height) > 0 &&
       Number(preset.width) <= COLS && Number(preset.height) <= ROWS && Array.isArray(preset.cells) && preset.cells.length > 0 &&
@@ -2145,7 +2145,7 @@
       if (!Number.isInteger(x) || !Number.isInteger(y) || x < 0 || y < 0) return null;
       const validState = mode === 'conway' ? value === 1
         : mode === 'wireworld' ? Number.isInteger(value) && value >= 1 && value <= 3
-          : value === 1;
+          : value === 1 || value === 2;
       if (!validState) return null;
       unique.set(`${x},${y}`, mode === 'conway' ? [x, y] : [x, y, value]);
     }
