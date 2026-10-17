@@ -340,7 +340,7 @@ dependencies = [
 
 [[package]]
 name = "conway-life"
-version = "1.6.1"
+version = "2.0.0-beta1"
 dependencies = [
  "tauri",
  "tauri-build",

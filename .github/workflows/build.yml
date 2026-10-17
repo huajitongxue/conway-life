@@ -80,6 +80,7 @@ jobs:
           set -euo pipefail
           node --check web/js/script.js
           node --check web/js/platform.js
+          node --check web/js/automata.js
           node --check web/js/history.js
           node --check web/js/replay.js
           node --check web/js/view.js

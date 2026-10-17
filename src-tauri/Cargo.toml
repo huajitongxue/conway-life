@@ -1,7 +1,7 @@
 [package]
 name = "conway-life"
-version = "1.6.1"
-description = "离线康威生命游戏的 Tauri 桌面壳"
+version = "2.0.0-beta1"
+description = "离线方块规则模拟器的 Tauri 桌面壳"
 authors = ["huajitongxue"]
 license = "MIT"
 repository = "https://github.com/huajitongxue/conway-life"

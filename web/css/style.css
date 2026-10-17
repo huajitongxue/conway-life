@@ -57,6 +57,46 @@ button:focus-visible, input:focus-visible, canvas:focus-visible {
   padding: clamp(0.65rem, 1.5vw, 1.25rem);
 }
 
+.mode-selection {
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 2rem;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 1.5rem 0;
+}
+.mode-selection-heading { width: min(1120px, 100%); }
+.mode-selection-heading h1 { margin: 0; font-size: 2rem; font-weight: 750; }
+.mode-selection-heading p { margin: 0.35rem 0 0; color: var(--muted); font-size: 0.95rem; }
+.mode-cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.85rem; width: min(1120px, 100%); }
+.mode-card {
+  display: grid;
+  align-content: start;
+  min-width: 0;
+  padding: 0.8rem;
+  border-radius: 8px;
+  background: rgba(15, 27, 33, 0.94);
+  text-align: left;
+}
+.mode-card:hover, .mode-card:focus-visible { transform: translateY(-2px); border-color: var(--accent); }
+.mode-preview { display: block; width: 100%; aspect-ratio: 10 / 7; border: 1px solid var(--border); border-radius: 5px; background: #07151c; }
+.mode-card-name { margin-top: 0.8rem; color: var(--text); font-size: 1.05rem; font-weight: 750; }
+.mode-card-english { margin-top: 0.1rem; color: var(--muted); font-size: 0.78rem; }
+.mode-card-rule { margin-top: 0.65rem; color: var(--text); font-size: 0.78rem; line-height: 1.45; }
+.game-page { display: grid; grid-template-rows: auto minmax(0, 1fr); gap: 0.6rem; min-width: 0; min-height: 0; }
+.mode-toolbar { display: flex; align-items: center; gap: 0.7rem; min-width: 0; padding: 0.45rem 0.65rem; border: 1px solid var(--border); border-radius: 8px; background: rgba(13, 27, 35, 0.9); }
+.mode-toolbar-title { display: grid; min-width: 8.2rem; line-height: 1.2; }
+.mode-toolbar-title strong { overflow: hidden; color: var(--text); font-size: 0.86rem; text-overflow: ellipsis; white-space: nowrap; }
+.mode-toolbar-title span { margin-top: 0.15rem; color: var(--muted); font-size: 0.66rem; }
+.brush-palette { display: flex; flex-wrap: wrap; align-items: center; gap: 0.3rem; min-width: 0; }
+.brush-button { display: inline-flex; align-items: center; gap: 0.35rem; min-height: 2rem; padding: 0.25rem 0.45rem; border-radius: 6px; color: var(--muted); font-size: 0.72rem; line-height: 1.1; white-space: nowrap; }
+.brush-button.is-selected { border-color: var(--accent); background: var(--accent-soft); color: var(--text); }
+.brush-swatch { width: 0.72rem; height: 0.72rem; flex: none; border: 1px solid rgba(255, 255, 255, 0.22); border-radius: 2px; background: var(--swatch-color, transparent); }
+.mode-switch-button { flex: none; margin-left: auto; padding: 0.35rem 0.55rem; border-radius: 6px; color: var(--muted); font-size: 0.72rem; }
+.editor-brush-palette { margin: -0.1rem 0 0.6rem; }
+
 .stage-shell {
   display: grid;
   grid-template-columns: minmax(0, 1fr) clamp(300px, 25vw, 350px);
@@ -117,7 +157,7 @@ button:focus-visible, input:focus-visible, canvas:focus-visible {
 .library { display: grid; grid-template-rows: auto minmax(0, 1fr); min-height: 0; }
 .library-heading { display: grid; gap: 0.22rem; margin-bottom: 0.5rem; }
 .library-title-row { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
-.library-heading h2 { margin: 0; font-size: 1rem; letter-spacing: -0.02em; }
+.library-heading h2 { margin: 0; font-size: 1rem; letter-spacing: 0; }
 .library-heading span, .library-help { color: var(--muted); font-size: 0.76rem; }
 .library-help { margin: 0; }
 .custom-toggle { padding: 0.45rem 0.6rem; font-size: 0.76rem; font-weight: 700; }
@@ -328,6 +368,11 @@ button:focus-visible, input:focus-visible, canvas:focus-visible {
 
 @media (max-width: 900px) {
   .app { height: auto; min-height: 100vh; min-height: 100dvh; }
+  .mode-selection { align-content: start; padding: 3vh 0 1rem; }
+  .mode-cards { grid-template-columns: 1fr; max-width: 600px; }
+  .mode-card { grid-template-columns: minmax(0, 1fr); }
+  .mode-preview { max-height: 180px; }
+  .game-page { min-height: 0; }
   .stage-shell { grid-template-columns: 1fr; grid-template-rows: minmax(280px, 60vh) auto; }
   .stage-column { aspect-ratio: 3 / 2; }
   .control-panel { grid-template-rows: auto auto auto auto; }
@@ -340,6 +385,14 @@ button:focus-visible, input:focus-visible, canvas:focus-visible {
 }
 
 @media (max-width: 560px) {
+  .mode-selection { gap: 1rem; }
+  .mode-selection-heading h1 { font-size: 1.55rem; }
+  .mode-card { grid-template-columns: minmax(0, 1fr); }
+  .mode-preview { max-height: 130px; }
+  .mode-toolbar { flex-wrap: wrap; }
+  .mode-toolbar-title { flex: 1 1 8rem; }
+  .mode-toolbar .brush-palette { order: 3; width: 100%; }
+  .mode-switch-button { order: 2; }
   .stage-shell { grid-template-rows: minmax(210px, 52vh) auto; }
   .stage-hint { display: none; }
   .primary-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
