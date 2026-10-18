@@ -128,6 +128,8 @@ button:focus-visible, input:focus-visible, canvas:focus-visible {
 
 #gameCanvas, #editorCanvas { display: block; width: 100%; height: 100%; touch-action: none; }
 #gameCanvas { cursor: crosshair; }
+.region-selection-box { position: absolute; pointer-events: none; border: 1px solid var(--accent); background: rgba(var(--accent-rgb), 0.18); box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.45); }
+.region-selection-hint { position: absolute; top: 0.6rem; left: 0.6rem; right: 0.6rem; width: fit-content; max-width: calc(100% - 1.2rem); margin: 0; padding: 0.35rem 0.55rem; border: 1px solid var(--border-strong); border-radius: 8px; color: var(--text); background: rgba(4, 14, 19, 0.9); font-size: 0.72rem; pointer-events: none; }
 .stage-hint {
   position: absolute;
   right: 0.8rem;
@@ -157,6 +159,9 @@ button:focus-visible, input:focus-visible, canvas:focus-visible {
 .library { display: grid; grid-template-rows: auto minmax(0, 1fr); min-height: 0; }
 .library-heading { display: grid; gap: 0.22rem; margin-bottom: 0.5rem; }
 .library-title-row { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
+.library-title-row > div:first-child { min-width: 0; }
+.library-tools { display: flex; flex: none; justify-content: flex-end; gap: 0.35rem; }
+#regionSelectionButton.is-active { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
 .library-heading h2 { margin: 0; font-size: 1rem; letter-spacing: 0; }
 .library-heading span, .library-help { color: var(--muted); font-size: 0.76rem; }
 .library-help { margin: 0; }
@@ -305,7 +310,7 @@ button:focus-visible, input:focus-visible, canvas:focus-visible {
 .editor-head h2 { margin: 0 0 0.25rem; font-size: 1.3rem; }
 .editor-head p { margin: 0 0 0.8rem; color: var(--muted); font-size: 0.82rem; }
 .icon-button { width: 2.3rem; height: 2.3rem; padding: 0; border-radius: 50%; font-size: 1.2rem; line-height: 1; }
-.editor-stage { width: 100%; aspect-ratio: 8 / 5; overflow: hidden; border: 1px solid var(--border); border-radius: 13px; background: #07151c; }
+.editor-stage { width: 100%; aspect-ratio: var(--editor-ratio, 8 / 5); overflow: hidden; border: 1px solid var(--border); border-radius: 13px; background: #07151c; }
 .editor-actions { display: flex; justify-content: space-between; gap: 0.65rem; margin-top: 0.8rem; }
 .editor-actions .right-actions { display: flex; gap: 0.5rem; }
 .setting-toggle { display: flex; align-items: center; gap: 0.55rem; margin: 0.15rem 0 1rem; color: var(--text); font-weight: 700; }

@@ -49,6 +49,8 @@
       <div class="stage-column">
         <div class="stage">
           <canvas id="gameCanvas" width="1200" height="800" aria-label="康威生命游戏画布"></canvas>
+          <div class="region-selection-box" id="regionSelectionBox" hidden aria-hidden="true"></div>
+          <p class="region-selection-hint" id="regionSelectionHint" hidden role="status">左键拖出选框，松开即保存 · 右键或 Esc 取消</p>
           <div class="stage-hint" id="stageHint">左键绘制 · 右键擦除 · 仅拖拽预设到这里</div>
           <div class="coordinate-value" id="coordinateValue" hidden aria-label="鼠标网格坐标"></div>
         </div>
@@ -62,7 +64,10 @@
                 <h2>预设库</h2>
                 <span>系统预设与自定义预设</span>
               </div>
-              <button class="custom-toggle" id="openShapeManagerButton" type="button">形状管理</button>
+              <div class="library-tools">
+                <button class="custom-toggle" id="regionSelectionButton" type="button" aria-pressed="false">框选</button>
+                <button class="custom-toggle" id="openShapeManagerButton" type="button">形状管理</button>
+              </div>
             </div>
             <p class="library-help" id="libraryHelp">拖拽卡片到场地放置，点击卡片不会改变地图。</p>
             <div class="library-io-row" id="presetIoRow">

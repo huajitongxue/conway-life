@@ -66,7 +66,10 @@
     gameView: { width: 0, height: 0, dpr: 1 },
     editorView: { width: 0, height: 0, dpr: 1 },
     drawing: null,
+    regionSelection: null,
     editorDrawing: null,
+    editorCols: EDITOR_COLS,
+    editorRows: EDITOR_ROWS,
     editorGrid: new Uint8Array(EDITOR_COLS * EDITOR_ROWS),
     editorPresetId: null,
     customPresets: [],
@@ -93,6 +96,9 @@
     modeSwitchButton: document.getElementById('modeSwitchButton'),
     brushPalette: document.getElementById('brushPalette'),
     editorBrushPalette: document.getElementById('editorBrushPalette'),
+    regionSelectionButton: document.getElementById('regionSelectionButton'),
+    regionSelectionBox: document.getElementById('regionSelectionBox'),
+    regionSelectionHint: document.getElementById('regionSelectionHint'),
     generationValue: document.getElementById('generationValue'),
     populationValue: document.getElementById('populationValue'),
     populationLabel: document.getElementById('populationLabel'),
@@ -211,11 +217,12 @@
   }
 
   function boardLocked() {
-    return !state.modeId || state.reverseReadonly || state.replayIoBusy || state.historyDisablePending || state.modeSwitchPending;
+    return !state.modeId || state.reverseReadonly || state.replayIoBusy || state.historyDisablePending || state.modeSwitchPending || Boolean(state.regionSelection);
   }
 
   // ===== 回放文件 =====
   function beginReplayIo(kind) {
+    cancelRegionSelection();
     finishGameDrawing(false);
     ensureHistory();
     state.replayResume = { running: state.running, direction: state.playDirection };
@@ -419,6 +426,7 @@
     }
     document.addEventListener('keydown', handleKeydown);
     document.addEventListener('visibilitychange', () => {
+      if (document.hidden) cancelRegionSelection();
       if (!state.modeId && !document.hidden) startPreviewAnimation();
       else if (document.hidden) stopPreviewAnimation();
     });
@@ -429,7 +437,9 @@
     });
     viewTools.bind();
     themeTools.bind();
-    window.addEventListener('blur', () => finishGameDrawing(false));
+    window.addEventListener('blur', () => { finishGameDrawing(false); cancelRegionSelection(); });
+    bindBrushWheel(gameCanvas);
+    bindBrushWheel(editorCanvas);
 
     els.modeCards.forEach((card) => card.addEventListener('click', () => selectMode(card.dataset.mode)));
     els.modeSwitchButton.addEventListener('click', requestModeSelection);
@@ -473,6 +483,10 @@
     });
 
     els.openShapeManagerButton.addEventListener('click', openShapeManager);
+    els.regionSelectionButton.addEventListener('click', toggleRegionSelection);
+    els.regionSelectionButton.addEventListener('keydown', (event) => {
+      if (event.key === ' ' || event.key === 'Enter') event.stopPropagation();
+    });
     els.closeShapeManagerButton.addEventListener('click', closeShapeManager);
     els.shapeManagerModal.addEventListener('click', (event) => {
       if (event.target === els.shapeManagerModal) closeShapeManager();
@@ -487,7 +501,7 @@
     els.saveEditorButton.addEventListener('click', saveEditorPreset);
 
     els.exportPresetsButton.addEventListener('click', enterPresetSelection);
-    els.importPresetsButton.addEventListener('click', () => els.importPresetsInput.click());
+    els.importPresetsButton.addEventListener('click', () => { cancelRegionSelection(); els.importPresetsInput.click(); });
     els.importPresetsInput.addEventListener('change', () => {
       const file = els.importPresetsInput.files?.[0] || null;
       // 先清空，保证连续选择同一个文件时也会再次触发 change。
@@ -608,6 +622,7 @@
   function selectMode(modeId) {
     const mode = globalThis.CONWAY_AUTOMATA.modes[modeId];
     if (!mode || state.modeSwitchPending) return;
+    cancelRegionSelection();
     stopPreviewAnimation();
     if (state.running) stopRunning();
     state.modeId = modeId;
@@ -672,6 +687,37 @@
     els.mutationFields.hidden = state.modeId !== 'conway';
   }
 
+  function getBrushes() {
+    if (state.modeId === 'wireworld') return [{ value: 1, label: '导线' }, { value: 2, label: '电子头' }, { value: 3, label: '电子尾' }];
+    if (state.modeId === 'brain') return [{ value: 1, label: '亮' }, { value: 2, label: '暗色（将熄）' }];
+    return [{ value: 1, label: '活细胞' }];
+  }
+
+  function setBrush(value) {
+    if (!getBrushes().some((brush) => brush.value === value)) return;
+    state.brushState = value;
+    renderBrushPalette();
+  }
+
+  function bindBrushWheel(canvas) {
+    canvas.addEventListener('wheel', (event) => {
+      if (!state.modeId || !Number.isFinite(event.deltaY) || event.deltaY === 0
+        || event.ctrlKey || event.metaKey || event.altKey || event.buttons
+        || state.drawing || state.editorDrawing || state.presetDrag || state.regionSelection) return;
+      const editorOpen = els.editorModal.classList.contains('is-open');
+      if (canvas === editorCanvas ? !editorOpen : modalOpen()) return;
+      if (state.replayIoBusy || state.historyDisablePending || state.modeSwitchPending) return;
+      const rect = canvas.getBoundingClientRect();
+      if (event.clientX < rect.left || event.clientX >= rect.right || event.clientY < rect.top || event.clientY >= rect.bottom) return;
+      const brushes = getBrushes();
+      if (brushes.length < 2) return;
+      event.preventDefault();
+      const index = brushes.findIndex((brush) => brush.value === state.brushState);
+      const next = (Math.max(0, index) + (event.deltaY > 0 ? 1 : -1) + brushes.length) % brushes.length;
+      setBrush(brushes[next].value);
+    }, { passive: false });
+  }
+
   function renderBrushPalette() {
     const mode = globalThis.CONWAY_AUTOMATA.modes[state.modeId];
     if (!mode) return;
@@ -683,9 +729,7 @@
       state.brushState = 1;
       return;
     }
-    const brushes = state.modeId === 'wireworld'
-      ? [{ value: 1, label: '导线' }, { value: 2, label: '电子头' }, { value: 3, label: '电子尾' }]
-      : [{ value: 1, label: '亮' }, { value: 2, label: '暗色（将熄）' }];
+    const brushes = getBrushes();
     [els.brushPalette, els.editorBrushPalette].forEach((container) => {
       container.replaceChildren();
       const colors = globalThis.CONWAY_THEME.stateColors(viewTools.preferences, state.modeId);
@@ -696,17 +740,14 @@
         button.classList.toggle('is-selected', value === state.brushState);
         button.setAttribute('aria-pressed', String(value === state.brushState));
         button.dataset.brushState = String(value);
-        button.title = `${label}笔刷`;
+        button.title = `${label}笔刷（画布内可用滚轮切换）`;
         const swatch = document.createElement('span');
         swatch.className = 'brush-swatch';
         swatch.style.setProperty('--swatch-color', colors[value] || 'transparent');
         const text = document.createElement('span');
         text.textContent = label;
         button.append(swatch, text);
-        button.addEventListener('click', () => {
-          state.brushState = value;
-          renderBrushPalette();
-        });
+        button.addEventListener('click', () => setBrush(value));
         container.appendChild(button);
       });
     });
@@ -714,6 +755,7 @@
 
   function requestModeSelection() {
     if (!state.modeId || state.replayIoBusy || state.historyDisablePending) return;
+    cancelRegionSelection();
     finishGameDrawing(false);
     if (state.presetSelectionMode) exitPresetSelection(false);
     closePresetActionMenu();
@@ -734,6 +776,7 @@
   }
 
   function returnToModeSelection() {
+    cancelRegionSelection();
     stopRunning();
     finishGameDrawing(false);
     state.grid.fill(0);
@@ -759,7 +802,7 @@
 
   // ===== 历史记录与导航 =====
   function toggleHistoryRecording() {
-    if (modalOpen() || !state.modeId) return;
+    if (modalOpen() || !state.modeId || state.regionSelection) return;
     finishGameDrawing(false);
     state.historyNavigationId += 1;
     state.preview = null;
@@ -874,7 +917,7 @@
   }
 
   function backwardOne() {
-    if (state.replayIoBusy || state.historyDisablePending || !state.historyEnabled) return;
+    if (state.replayIoBusy || state.historyDisablePending || !state.historyEnabled || state.regionSelection) return;
     finishGameDrawing(false);
     stopRunning();
     ensureHistory();
@@ -882,21 +925,21 @@
   }
 
   function forwardOne() {
-    if (state.replayIoBusy || state.historyDisablePending) return;
+    if (state.replayIoBusy || state.historyDisablePending || state.regionSelection) return;
     finishGameDrawing(false);
     stopRunning();
     step();
   }
 
   function toggleReverse() {
-    if (state.replayIoBusy || state.historyDisablePending || !state.historyEnabled) return;
+    if (state.replayIoBusy || state.historyDisablePending || !state.historyEnabled || state.regionSelection) return;
     finishGameDrawing(false);
     if (state.running && state.playDirection === 'reverse') stopRunning();
     else startRunning('reverse');
   }
 
   function exitReverse() {
-    if (state.replayIoBusy) return;
+    if (state.replayIoBusy || state.regionSelection) return;
     stopRunning();
     state.reverseReadonly = false;
     state.historyNavigationId += 1;
@@ -907,7 +950,7 @@
   }
 
   function playbackTick() {
-    if (!state.running || state.drawing) return;
+    if (!state.running || state.drawing || state.regionSelection) return;
     if (state.playDirection === 'reverse') {
       restoreHistory(history.backward());
       if (!history.status().backward) stopRunning();
@@ -925,7 +968,7 @@
 
   // ===== 游戏逻辑 =====
   function step() {
-    if (!state.modeId || state.replayIoBusy || state.historyDisablePending) return;
+    if (!state.modeId || state.replayIoBusy || state.historyDisablePending || state.regionSelection) return;
     finishGameDrawing(false);
     ensureHistory();
     if (history.status().forward) {
@@ -948,14 +991,14 @@
   }
 
   function toggleRunning() {
-    if (!state.modeId || state.replayIoBusy) return;
+    if (!state.modeId || state.replayIoBusy || state.regionSelection) return;
     finishGameDrawing(false);
     if (state.running) stopRunning();
     else startRunning(state.reverseReadonly ? 'reverse' : 'forward');
   }
 
   function startRunning(direction = 'forward') {
-    if (!state.modeId || state.replayIoBusy || state.historyDisablePending
+    if (!state.modeId || state.replayIoBusy || state.historyDisablePending || state.regionSelection
       || (direction === 'reverse' && !state.historyEnabled)) return;
     finishGameDrawing(false);
     ensureHistory();
@@ -1012,7 +1055,11 @@
 
   function updatePlayButtons() {
     const isRunning = state.running;
-    const busy = state.replayIoBusy || state.historyDisablePending;
+    const busy = state.replayIoBusy || state.historyDisablePending || Boolean(state.regionSelection);
+    els.regionSelectionButton.disabled = !state.modeId || state.replayIoBusy || state.historyDisablePending || state.modeSwitchPending;
+    els.regionSelectionButton.textContent = state.regionSelection ? '取消框选' : '框选';
+    els.regionSelectionButton.classList.toggle('is-active', Boolean(state.regionSelection));
+    els.regionSelectionButton.setAttribute('aria-pressed', String(Boolean(state.regionSelection)));
     els.historyRecordingButton.textContent = state.historyEnabled ? '历史回放：开' : '历史回放：关';
     els.historyRecordingButton.setAttribute('aria-checked', String(state.historyEnabled));
     els.historyRecordingButton.classList.toggle('is-active', state.historyEnabled);
@@ -1043,7 +1090,7 @@
     els.historyPosition.textContent = state.historyEnabled
       ? `历史位置 ${Math.max(0, position.cursor)} / ${Math.max(0, position.length - 1)}` : '历史记录已关闭';
     els.historyCounts.textContent = `可倒退 ${position.backward} · 可前进 ${position.forward}`;
-    const mode = state.drawing ? '绘制中' : !isRunning ? '暂停'
+    const mode = state.regionSelection ? '框选中' : state.drawing ? '绘制中' : !isRunning ? '暂停'
       : reversing ? '倒放中' : position.forward ? '历史重播' : '演化中';
     const operations = { initial: '起点', evolution: '演化', mutation: '突变', draw: '绘制',
       erase: '擦除', preset: '预设放置', clear: '清空', random: '随机', boundary: '边界切换', settings: '突变设置' };
@@ -1163,6 +1210,7 @@
   function openMutationSettings() {
     if (state.replayIoBusy) return;
     if (els.mutationModal.classList.contains('is-open')) return;
+    cancelRegionSelection();
     finishGameDrawing(false);
     ensureHistory();
     state.mutationResumeRunning = state.running;
@@ -1331,6 +1379,109 @@
   }
 
   // ===== 主画布绘制与鼠标操作 =====
+  function toggleRegionSelection() {
+    if (state.regionSelection) { cancelRegionSelection(); return; }
+    if (!state.modeId || modalOpen()) return;
+    finishGameDrawing(false);
+    stopRunning();
+    if (state.presetSelectionMode) exitPresetSelection(false);
+    closePresetActionMenu();
+    // 让此前开始的预设拖拽失效，迟到的松开事件不能修改场地。
+    state.historyNavigationId += 1;
+    state.presetDrag = null;
+    state.preview = null;
+    state.regionSelection = { pointerId: null, start: null, end: null };
+    els.regionSelectionHint.hidden = false;
+    els.regionSelectionBox.hidden = true;
+    updatePlayButtons();
+    draw();
+  }
+
+  function releaseRegionPointer(selection) {
+    const pointerId = selection.pointerId;
+    selection.pointerId = null;
+    if (pointerId !== null && gameCanvas.hasPointerCapture?.(pointerId)) gameCanvas.releasePointerCapture(pointerId);
+  }
+
+  function cancelRegionSelection() {
+    const selection = state.regionSelection;
+    if (!selection) return;
+    state.regionSelection = null;
+    releaseRegionPointer(selection);
+    els.regionSelectionBox.hidden = true;
+    els.regionSelectionHint.hidden = true;
+    updatePlayButtons();
+  }
+
+  function regionEndpoint(event) {
+    const rect = gameCanvas.getBoundingClientRect();
+    if (!rect.width || !rect.height || !Number.isFinite(event.clientX) || !Number.isFinite(event.clientY)) return null;
+    return {
+      x: Math.max(0, Math.min(COLS - 1, Math.floor((event.clientX - rect.left) / rect.width * COLS))),
+      y: Math.max(0, Math.min(ROWS - 1, Math.floor((event.clientY - rect.top) / rect.height * ROWS)))
+    };
+  }
+
+  function updateRegionSelection(event) {
+    const selection = state.regionSelection;
+    if (!selection || selection.pointerId !== event.pointerId) return;
+    const cell = regionEndpoint(event);
+    if (!cell) return;
+    selection.end = cell;
+    const x = Math.min(selection.start.x, cell.x), y = Math.min(selection.start.y, cell.y);
+    const width = Math.abs(selection.start.x - cell.x) + 1;
+    const height = Math.abs(selection.start.y - cell.y) + 1;
+    const style = els.regionSelectionBox.style;
+    style.left = `${x / COLS * 100}%`;
+    style.top = `${y / ROWS * 100}%`;
+    style.width = `${width / COLS * 100}%`;
+    style.height = `${height / ROWS * 100}%`;
+    els.regionSelectionBox.hidden = false;
+  }
+
+  function extractRegionPattern(start, end) {
+    const cells = [];
+    const minX = Math.min(start.x, end.x), maxX = Math.max(start.x, end.x);
+    const minY = Math.min(start.y, end.y), maxY = Math.max(start.y, end.y);
+    for (let y = minY; y <= maxY; y += 1) {
+      for (let x = minX; x <= maxX; x += 1) {
+        const value = state.grid[y * COLS + x];
+        if (value) cells.push([x, y, value]);
+      }
+    }
+    if (!cells.length) return null;
+    const left = Math.min(...cells.map(([x]) => x)), top = Math.min(...cells.map(([, y]) => y));
+    const right = Math.max(...cells.map(([x]) => x)), bottom = Math.max(...cells.map(([, y]) => y));
+    return {
+      mode: state.modeId, width: right - left + 1, height: bottom - top + 1,
+      cells: cells.map(([x, y, value]) => state.modeId === 'conway' ? [x - left, y - top] : [x - left, y - top, value])
+    };
+  }
+
+  function finishRegionSelection(event) {
+    const selection = state.regionSelection;
+    if (!selection || selection.pointerId !== event.pointerId) return;
+    if (event.button === 2) { cancelRegionSelection(); return; }
+    updateRegionSelection(event);
+    releaseRegionPointer(selection);
+    const shape = extractRegionPattern(selection.start, selection.end);
+    if (!shape) {
+      els.regionSelectionBox.hidden = true;
+      showToast('区域内没有方块，请重新框选');
+      return;
+    }
+    const id = getNextPresetId();
+    const pattern = { id, label: `预设${id}`, ...shape };
+    const presets = [...state.customPresets, pattern].sort((a, b) => a.id - b.id);
+    // 先尝试写入完整候选数据，失败时不产生仅在本次页面存在的“已保存”预设。
+    if (!persistCustomPresets(presets)) return;
+    state.customPresets = presets;
+    cancelRegionSelection();
+    renderPresetLibrary();
+    els.presetLibrary.scrollTop = els.presetLibrary.scrollHeight;
+    showToast(`已保存为${pattern.label}`);
+  }
+
   function finishGameDrawing(resumeRunning) {
     const drawing = state.drawing;
     if (!drawing) return;
@@ -1343,6 +1494,16 @@
   function bindGameCanvasEvents() {
     gameCanvas.addEventListener('contextmenu', (event) => event.preventDefault());
     gameCanvas.addEventListener('pointerdown', (event) => {
+      if (state.regionSelection) {
+        event.preventDefault();
+        if (event.button === 2) { cancelRegionSelection(); return; }
+        const cell = canvasToCell(gameCanvas, event.clientX, event.clientY);
+        if (event.button !== 0 || state.regionSelection.pointerId !== null || !cell) return;
+        Object.assign(state.regionSelection, { pointerId: event.pointerId, start: cell, end: cell });
+        gameCanvas.setPointerCapture?.(event.pointerId);
+        updateRegionSelection(event);
+        return;
+      }
       if (boardLocked()) return;
       if (state.drawing || (event.button !== 0 && event.button !== 2)) return;
       event.preventDefault();
@@ -1359,6 +1520,11 @@
       setCell(cell.x, cell.y, state.drawing.value);
     });
     gameCanvas.addEventListener('pointermove', (event) => {
+      if (state.regionSelection) {
+        if (event.buttons & 2) cancelRegionSelection();
+        else updateRegionSelection(event);
+        return;
+      }
       if (boardLocked()) return;
       if (!state.drawing || !state.drawing.dragAllowed || event.pointerId !== state.drawing.pointerId) return;
       const cell = canvasToCell(gameCanvas, event.clientX, event.clientY);
@@ -1368,6 +1534,7 @@
       }
     });
     const finishDrawing = (event) => {
+      if (state.regionSelection) { finishRegionSelection(event); return; }
       if (!state.drawing || event.pointerId !== state.drawing.pointerId) return;
       const cell = canvasToCell(gameCanvas, event.clientX, event.clientY);
       if (cell && state.drawing.dragAllowed) {
@@ -1378,6 +1545,7 @@
     };
     gameCanvas.addEventListener('pointerup', finishDrawing);
     const cancelDrawing = (event) => {
+      if (state.regionSelection?.pointerId === event.pointerId) cancelRegionSelection();
       if (state.drawing && event.pointerId === state.drawing.pointerId) finishGameDrawing(false);
     };
     gameCanvas.addEventListener('pointercancel', cancelDrawing);
@@ -1420,8 +1588,8 @@
   function canvasToCell(canvas, clientX, clientY) {
     const rect = canvas.getBoundingClientRect();
     if (clientX < rect.left || clientX >= rect.right || clientY < rect.top || clientY >= rect.bottom) return null;
-    const cols = canvas === gameCanvas ? COLS : EDITOR_COLS;
-    const rows = canvas === gameCanvas ? ROWS : EDITOR_ROWS;
+    const cols = canvas === gameCanvas ? COLS : state.editorCols;
+    const rows = canvas === gameCanvas ? ROWS : state.editorRows;
     return {
       x: Math.floor(((clientX - rect.left) / rect.width) * cols),
       y: Math.floor(((clientY - rect.top) / rect.height) * rows)
@@ -1870,11 +2038,13 @@
         Number(cell[0]) >= 0 && Number(cell[0]) < Number(preset.width) && Number(cell[1]) >= 0 && Number(cell[1]) < Number(preset.height));
   }
 
-  function persistCustomPresets() {
+  function persistCustomPresets(presets = state.customPresets) {
     try {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state.customPresets));
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(presets));
+      return true;
     } catch (error) {
       showToast('浏览器无法保存预设，请检查存储权限');
+      return false;
     }
   }
 
@@ -1896,6 +2066,7 @@
 
   // ===== 重命名自定义预设 =====
   function openRenameModal(id) {
+    cancelRegionSelection();
     viewTools.clearKeys();
     const preset = state.customPresets.find((item) => item.id === id);
     if (!preset) return;
@@ -1949,6 +2120,7 @@
 
   // ===== 预设导出与导入 =====
   function enterPresetSelection() {
+    cancelRegionSelection();
     const entries = getPresetEntries();
     if (!entries.length) {
       showToast('预设库是空的，没有可导出的形状');
@@ -2204,6 +2376,7 @@
 
   // ===== 形状管理弹窗 =====
   function openShapeManager() {
+    cancelRegionSelection();
     viewTools.clearKeys();
     if (els.shapeManagerModal.classList.contains('is-open')) return;
     renderShapeManager();
@@ -2322,10 +2495,18 @@
   }
 
   // ===== 自定义编辑器 =====
+  function resetEditorSize(width = EDITOR_COLS, height = EDITOR_ROWS) {
+    state.editorDrawing = null;
+    state.editorCols = Math.max(EDITOR_COLS, width);
+    state.editorRows = Math.max(EDITOR_ROWS, height);
+    state.editorGrid = new Uint8Array(state.editorCols * state.editorRows);
+    editorCanvas.parentElement.style.setProperty('--editor-ratio', `${state.editorCols} / ${state.editorRows}`);
+  }
+
   function openEditor() {
     // 新建空白形状
     state.editorPresetId = null;
-    state.editorGrid.fill(0);
+    resetEditorSize();
     state.brushState = 1;
     els.editorTitle.textContent = '新建形状';
     els.editorSubtitle.textContent = '使用上方笔刷绘制；右键擦除。保存时会裁剪外围空白。';
@@ -2339,12 +2520,12 @@
     if (!preset) return;
 
     state.editorPresetId = id;
-    state.editorGrid.fill(0);
+    resetEditorSize(preset.width, preset.height);
     state.brushState = 1;
     // 形状坐标相对自己的左上角，放进编辑区左上角，方便继续增删格子。
     preset.cells.forEach(([x, y, value = 1]) => {
-      if (x >= 0 && x < EDITOR_COLS && y >= 0 && y < EDITOR_ROWS) {
-        state.editorGrid[y * EDITOR_COLS + x] = value;
+      if (x >= 0 && x < state.editorCols && y >= 0 && y < state.editorRows) {
+        state.editorGrid[y * state.editorCols + x] = value;
       }
     });
     els.editorTitle.textContent = `修改「${preset.label}」`;
@@ -2355,6 +2536,7 @@
   }
 
   function showEditor() {
+    cancelRegionSelection();
     viewTools.clearKeys();
     closeShapeManager();
     drawEditor();
@@ -2396,7 +2578,7 @@
       event.preventDefault();
       const cell = canvasToCell(editorCanvas, event.clientX, event.clientY);
       if (!cell) return;
-      const index = cell.y * EDITOR_COLS + cell.x;
+      const index = cell.y * state.editorCols + cell.x;
       const canMoveShape = event.button === 0 && state.editorPresetId !== null && state.editorGrid[index] === 0;
       // 空白格先等待手势结束：单击新增细胞，超过阈值后才整体移动。
       state.editorDrawing = canMoveShape
@@ -2448,14 +2630,14 @@
   }
 
   function setEditorCell(x, y, value) {
-    state.editorGrid[y * EDITOR_COLS + x] = value;
+    state.editorGrid[y * state.editorCols + x] = value;
     drawEditor();
   }
 
   function paintEditorLine(from, to, value) {
     let changed = false;
     drawCellLine(from, to, (x, y) => {
-      const index = y * EDITOR_COLS + x;
+      const index = y * state.editorCols + x;
       if (state.editorGrid[index] === value) return;
       state.editorGrid[index] = value;
       changed = true;
@@ -2465,9 +2647,9 @@
 
   function moveEditorShape(deltaX, deltaY, sourceGrid) {
     const cells = [];
-    for (let y = 0; y < EDITOR_ROWS; y += 1) {
-      for (let x = 0; x < EDITOR_COLS; x += 1) {
-        const value = sourceGrid[y * EDITOR_COLS + x];
+    for (let y = 0; y < state.editorRows; y += 1) {
+      for (let x = 0; x < state.editorCols; x += 1) {
+        const value = sourceGrid[y * state.editorCols + x];
         if (value) cells.push([x, y, value]);
       }
     }
@@ -2477,12 +2659,12 @@
     const maxX = Math.max(...cells.map(([x]) => x));
     const minY = Math.min(...cells.map(([, y]) => y));
     const maxY = Math.max(...cells.map(([, y]) => y));
-    const boundedX = Math.max(-minX, Math.min(EDITOR_COLS - 1 - maxX, deltaX));
-    const boundedY = Math.max(-minY, Math.min(EDITOR_ROWS - 1 - maxY, deltaY));
+    const boundedX = Math.max(-minX, Math.min(state.editorCols - 1 - maxX, deltaX));
+    const boundedY = Math.max(-minY, Math.min(state.editorRows - 1 - maxY, deltaY));
 
     state.editorGrid.fill(0);
     cells.forEach(([x, y, value]) => {
-      state.editorGrid[(y + boundedY) * EDITOR_COLS + x + boundedX] = value;
+      state.editorGrid[(y + boundedY) * state.editorCols + x + boundedX] = value;
     });
     drawEditor();
   }
@@ -2494,13 +2676,13 @@
     const colors = globalThis.CONWAY_THEME.stateColors(viewTools.preferences, state.modeId);
     editorCtx.fillStyle = colors[0];
     editorCtx.fillRect(0, 0, width, height);
-    const cellWidth = width / EDITOR_COLS;
-    const cellHeight = height / EDITOR_ROWS;
+    const cellWidth = width / state.editorCols;
+    const cellHeight = height / state.editorRows;
 
     editorCtx.fillStyle = colors[1];
-    for (let y = 0; y < EDITOR_ROWS; y += 1) {
-      for (let x = 0; x < EDITOR_COLS; x += 1) {
-        const value = state.editorGrid[y * EDITOR_COLS + x];
+    for (let y = 0; y < state.editorRows; y += 1) {
+      for (let x = 0; x < state.editorCols; x += 1) {
+        const value = state.editorGrid[y * state.editorCols + x];
         if (!value) continue;
         editorCtx.fillStyle = colors[state.modeId === 'conway' ? 1 : value] || colors[1];
         editorCtx.fillRect(x * cellWidth + 1, y * cellHeight + 1, Math.max(1, cellWidth - 2), Math.max(1, cellHeight - 2));
@@ -2510,12 +2692,12 @@
     editorCtx.beginPath();
     editorCtx.strokeStyle = 'rgba(130, 211, 215, 0.24)';
     editorCtx.lineWidth = 1;
-    for (let x = 1; x < EDITOR_COLS; x += 1) {
+    for (let x = 1; x < state.editorCols; x += 1) {
       const px = Math.round(x * cellWidth) + 0.5;
       editorCtx.moveTo(px, 0);
       editorCtx.lineTo(px, height);
     }
-    for (let y = 1; y < EDITOR_ROWS; y += 1) {
+    for (let y = 1; y < state.editorRows; y += 1) {
       const py = Math.round(y * cellHeight) + 0.5;
       editorCtx.moveTo(0, py);
       editorCtx.lineTo(width, py);
@@ -2525,9 +2707,9 @@
 
   function saveEditorPreset() {
     const cells = [];
-    for (let y = 0; y < EDITOR_ROWS; y += 1) {
-      for (let x = 0; x < EDITOR_COLS; x += 1) {
-        const value = state.editorGrid[y * EDITOR_COLS + x];
+    for (let y = 0; y < state.editorRows; y += 1) {
+      for (let x = 0; x < state.editorCols; x += 1) {
+        const value = state.editorGrid[y * state.editorCols + x];
         if (value) cells.push([x, y, value]);
       }
     }
@@ -2608,6 +2790,11 @@
   }
 
   function handleKeydown(event) {
+    if (state.regionSelection && event.key === 'Escape') {
+      event.preventDefault();
+      cancelRegionSelection();
+      return;
+    }
     if (state.historyDisablePending) {
       if (event.key === 'Escape') {
         event.preventDefault();
@@ -2677,6 +2864,10 @@
     const isEditable = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || event.target?.isContentEditable;
     if (isEditable) return;
     if (viewTools.handleKeydown(event)) return;
+    if (state.regionSelection) {
+      if (event.code === 'Space' || ['arrowleft', 'arrowright', 'n', 'r', 'c'].includes(event.key.toLowerCase())) event.preventDefault();
+      return;
+    }
     if (event.ctrlKey || event.metaKey || event.altKey) return;
 
     const key = event.key.toLowerCase();
