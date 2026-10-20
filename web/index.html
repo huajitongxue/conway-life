@@ -9,16 +9,54 @@
 </head>
 <body>
   <main class="app">
-    <section class="stage-shell" aria-label="生命游戏工作区">
+    <section class="mode-selection" id="modeSelector" aria-labelledby="modeSelectionTitle">
+      <header class="mode-selection-heading">
+        <h1 id="modeSelectionTitle">康威生命游戏</h1>
+        <p>方块、规则，以及它们自己长出来的东西</p>
+      </header>
+      <div class="mode-cards" role="group" aria-label="选择游戏模式">
+        <button class="mode-card" type="button" data-mode="conway" aria-label="康威生命游戏，三个邻居就出生，两三个就活着，否则死掉" aria-keyshortcuts="1">
+          <canvas class="mode-preview" width="280" height="196" data-preview="conway" aria-hidden="true"></canvas>
+          <span class="mode-card-name">康威生命游戏</span>
+          <span class="mode-card-english">Game of Life</span>
+          <span class="mode-card-rule">三个邻居就出生，两三个就活着，否则死掉</span>
+        </button>
+        <button class="mode-card" type="button" data-mode="wireworld" aria-label="电线世界 Wireworld，电子头向前移动，导线旁恰有一两个电子头时被点燃" aria-keyshortcuts="2">
+          <canvas class="mode-preview" width="280" height="196" data-preview="wireworld" aria-hidden="true"></canvas>
+          <span class="mode-card-name">电线世界</span>
+          <span class="mode-card-english">Wireworld</span>
+          <span class="mode-card-rule">电子头向前移动，导线旁恰有一两个电子头时被点燃</span>
+        </button>
+        <button class="mode-card" type="button" data-mode="brain" aria-label="布赖恩大脑 Brian's Brain，亮格变将熄，将熄变暗；恰有两个亮邻居时变亮" aria-keyshortcuts="3">
+          <canvas class="mode-preview" width="280" height="196" data-preview="brain" aria-hidden="true"></canvas>
+          <span class="mode-card-name">布赖恩大脑</span>
+          <span class="mode-card-english">Brian's Brain</span>
+          <span class="mode-card-rule">亮格变将熄，将熄变暗；恰有两个亮邻居时变亮</span>
+        </button>
+      </div>
+    </section>
+
+    <section class="game-page" id="gamePage" hidden>
+      <header class="mode-toolbar">
+        <div class="mode-toolbar-title">
+          <strong id="activeModeName">康威生命游戏</strong>
+          <span id="activeModeEnglish">Game of Life</span>
+        </div>
+        <div class="brush-tools"><div class="brush-palette" id="brushPalette" role="group" aria-label="场地笔刷"></div><button class="line-draw-button toggle-button" id="lineDrawButton" type="button" aria-pressed="false">绘制直线</button></div>
+        <button class="mode-switch-button" id="modeSwitchButton" type="button">切换模式</button>
+      </header>
+    <section class="stage-shell" aria-label="游戏工作区">
       <div class="stage-column">
         <div class="stage">
           <canvas id="gameCanvas" width="1200" height="800" aria-label="康威生命游戏画布"></canvas>
+          <div class="region-selection-box" id="regionSelectionBox" hidden aria-hidden="true"></div>
+          <p class="region-selection-hint" id="regionSelectionHint" hidden role="status">左键拖出选框，松开即保存 · 右键或 Esc 取消</p>
           <div class="stage-hint" id="stageHint">左键绘制 · 右键擦除 · 仅拖拽预设到这里</div>
           <div class="coordinate-value" id="coordinateValue" hidden aria-label="鼠标网格坐标"></div>
         </div>
       </div>
 
-      <aside class="control-panel" aria-label="游戏控制与预设">
+      <aside class="control-panel" id="controlPanel" aria-label="游戏控制与预设">
         <section class="library" aria-label="预设库">
           <div class="library-heading">
             <div class="library-title-row">
@@ -26,9 +64,17 @@
                 <h2>预设库</h2>
                 <span>系统预设与自定义预设</span>
               </div>
-              <button class="custom-toggle" id="openShapeManagerButton" type="button">形状管理</button>
+              <div class="library-tools">
+                <button class="custom-toggle" id="regionDeleteButton" type="button" aria-pressed="false">框选删除</button>
+                <button class="custom-toggle" id="regionSelectionButton" type="button" aria-pressed="false">框选</button>
+                <button class="custom-toggle" id="openShapeManagerButton" type="button">形状管理</button>
+              </div>
             </div>
             <p class="library-help" id="libraryHelp">拖拽卡片到场地放置，点击卡片不会改变地图。</p>
+            <div class="region-delete-actions" id="regionDeleteActions" hidden>
+              <p id="regionDeleteSummary" role="status"></p>
+              <button class="danger-button" id="confirmRegionDeleteButton" type="button">确认删除</button><button id="cancelRegionDeleteButton" type="button">取消</button>
+            </div>
             <div class="library-io-row" id="presetIoRow">
               <button class="library-io-button" id="exportPresetsButton" type="button">导出形状</button>
               <button class="library-io-button" id="importPresetsButton" type="button">导入形状</button>
@@ -49,7 +95,7 @@
             <strong class="stat-value" id="generationValue">0</strong>
           </div>
           <div class="stat">
-            <span class="stat-label">存活细胞</span>
+            <span class="stat-label" id="populationLabel">存活细胞</span>
             <strong class="stat-value" id="populationValue">0</strong>
           </div>
           <div class="stat">
@@ -106,11 +152,12 @@
         <p class="key-help" id="keyHelp"><kbd>Space</kbd> 播放/暂停 · <kbd>←</kbd> 倒退 · <kbd>→</kbd>/<kbd>N</kbd> 前进 · <kbd>R</kbd> 随机 · <kbd>C</kbd> 清空<br><kbd>左 Ctrl</kbd> 坐标 · <kbd>左 Shift</kbd> 放大镜</p>
       </aside>
     </section>
+    </section>
   </main>
 
   <aside class="magnifier-panel" id="magnifierPanel" hidden aria-label="放大镜">
     <div class="magnifier-heading"><strong>放大镜</strong><button id="closeMagnifierButton" type="button" aria-label="关闭放大镜">×</button></div>
-    <p class="magnifier-shortcut-hint" id="magnifierShortcutHint">左 Shift：开关放大镜（可在设置中禁用）</p>
+    <p class="magnifier-shortcut-hint" id="magnifierShortcutHint">左 Shift 单独按下松开：开关 · ＋/−：倍率 · 拖动可挪动</p>
     <div class="magnifier-stage">
       <canvas id="magnifierCanvas" width="600" height="360" aria-label="鼠标周围区域的放大预览"></canvas>
       <p id="magnifierEmpty">鼠标移入主场地查看</p>
@@ -141,6 +188,7 @@
         </div>
         <button class="icon-button" id="closeEditorButton" type="button" aria-label="关闭编辑器">×</button>
       </div>
+      <div class="brush-tools editor-brush-palette"><div class="brush-palette" id="editorBrushPalette" role="group" aria-label="形状笔刷"></div><button class="line-draw-button toggle-button" id="editorLineDrawButton" type="button" aria-pressed="false">绘制直线</button></div>
       <div class="editor-stage">
         <canvas id="editorCanvas" width="1200" height="750" aria-label="自定义形状编辑画布"></canvas>
       </div>
@@ -291,6 +339,7 @@
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
   <script src="js/platform.js"></script>
+  <script src="js/automata.js"></script>
   <script src="js/history.js"></script>
   <script src="js/replay.js"></script>
   <script src="js/theme.js"></script>

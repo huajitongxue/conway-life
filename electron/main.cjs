@@ -20,6 +20,7 @@ function registerLocalPages() {
     ['/index.html', 'web/index.html'],
     ['/css/style.css', 'web/css/style.css'],
     ['/js/platform.js', 'web/js/platform.js'],
+    ['/js/automata.js', 'web/js/automata.js'],
     ['/js/history.js', 'web/js/history.js'],
     ['/js/replay.js', 'web/js/replay.js'],
     ['/js/theme.js', 'web/js/theme.js'],

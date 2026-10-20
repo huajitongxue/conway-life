@@ -1,23 +1,41 @@
 (() => {
   'use strict';
 
-  // 历史只保存影响演化的状态。界面显示、播放速度和预设库不随历史变化。
+  // 历史保存当前模式的状态；显示、播放速度和预设库不随历史变化。
   const fields = [
     'generation', 'population', 'boundary', 'mutationEnabled', 'mutationPreferStable',
     'mutationCount', 'mutationProbability', 'mutationDeathRatio', 'mutationMoveRatio'
   ];
+  const commonFields = fields.slice(0, 3);
+  const conwayFields = fields.slice(3);
+
+  function addConwayAgeAlias(snapshot) {
+    if (snapshot.mode === 'conway') {
+      Object.defineProperty(snapshot, 'cellAges', { get: () => snapshot.states, enumerable: false });
+    }
+    return snapshot;
+  }
 
   function copySnapshot(snapshot) {
-    const copy = { cellAges: snapshot.cellAges.slice() };
-    fields.forEach((field) => { copy[field] = snapshot[field]; });
-    return copy;
+    const mode = snapshot.mode || 'conway';
+    const states = snapshot.states || snapshot.cellAges;
+    if (!states || typeof states.slice !== 'function') throw new TypeError('历史状态数组无效');
+    const copy = { mode, states: states.slice() };
+    commonFields.forEach((field) => { copy[field] = snapshot[field]; });
+    if (mode === 'conway') conwayFields.forEach((field) => { copy[field] = snapshot[field]; });
+    return addConwayAgeAlias(copy);
   }
 
   function sameSnapshot(left, right) {
-    if (fields.some((field) => left[field] !== right[field])) return false;
-    if (left.cellAges.length !== right.cellAges.length) return false;
-    for (let index = 0; index < left.cellAges.length; index += 1) {
-      if (left.cellAges[index] !== right.cellAges[index]) return false;
+    if ((left.mode || 'conway') !== (right.mode || 'conway')) return false;
+    const mode = left.mode || 'conway';
+    const comparedFields = mode === 'conway' ? fields : commonFields;
+    if (comparedFields.some((field) => left[field] !== right[field])) return false;
+    const leftStates = left.states || left.cellAges;
+    const rightStates = right.states || right.cellAges;
+    if (leftStates.length !== rightStates.length) return false;
+    for (let index = 0; index < leftStates.length; index += 1) {
+      if (leftStates[index] !== rightStates[index]) return false;
     }
     return true;
   }
@@ -103,6 +121,9 @@
       const prepared = timeline.entries.map((entry) => ({
         operation: entry.operation, snapshot: copySnapshot(entry.snapshot)
       }));
+      if (prepared.some((entry) => entry.snapshot.mode !== prepared[0].snapshot.mode)) {
+        throw new TypeError('一段历史记录只能包含同一种模式');
+      }
       entries.fill(undefined);
       head = 0;
       length = prepared.length;
@@ -115,5 +136,10 @@
     return { clear, reset, append, backward: () => move(-1), forward: () => move(1), status, exportTimeline, replaceTimeline };
   }
 
-  globalThis.CONWAY_HISTORY = { create, fields: Object.freeze(fields) };
+  globalThis.CONWAY_HISTORY = {
+    create,
+    fields: Object.freeze(fields),
+    commonFields: Object.freeze(commonFields),
+    conwayFields: Object.freeze(conwayFields)
+  };
 })();

@@ -72,6 +72,12 @@
     return channels[0] * 0.2126 + channels[1] * 0.7152 + channels[2] * 0.0722;
   }
 
+  function blendHex(from, to, amount) {
+    const left = toRgb(from);
+    const right = toRgb(to);
+    return toHex(left.map((value, index) => Math.round(value + (right[index] - value) * amount)));
+  }
+
   function palette(preferences) {
     const choice = normalize(preferences);
     const cell = choice.theme === 'custom' ? choice.customColor
@@ -83,7 +89,23 @@
     for (let amount = 0; (luminance(accent) + 0.05) / (backgroundLuminance + 0.05) < 4.5; amount += 0.05) {
       accent = rgb.map((part) => Math.round(part + (255 - part) * Math.min(1, amount + 0.05)));
     }
-    return { cell, preview: 'rgba(' + rgb.join(', ') + ', 0.36)', accent: toHex(accent), channels: accent.join(', ') };
+    const background = '#07151c';
+    return {
+      cell,
+      preview: 'rgba(' + rgb.join(', ') + ', 0.36)',
+      accent: toHex(accent),
+      channels: accent.join(', '),
+      states: {
+        conway: { 0: background, 1: cell },
+        wireworld: {
+          0: background,
+          1: blendHex(background, cell, 0.42),
+          2: cell,
+          3: blendHex(cell, '#f2ffff', 0.38)
+        },
+        brain: { 0: background, 1: cell, 2: blendHex(background, cell, 0.38) }
+      }
+    };
   }
 
   function apply(preferences) {
@@ -214,5 +236,8 @@
     return { bind, open, readDraft };
   }
 
-  globalThis.CONWAY_THEME = { presets, normalize, palette, apply, create, toRgb, toHex, hsvToRgb, rgbToHsv, colorAt };
+  globalThis.CONWAY_THEME = {
+    presets, normalize, palette, apply, create, toRgb, toHex, hsvToRgb, rgbToHsv, colorAt,
+    stateColors: (preferences, mode) => palette(preferences).states[mode] || palette(preferences).states.conway
+  };
 })();
