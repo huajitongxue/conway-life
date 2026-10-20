@@ -1,6 +1,6 @@
 {
   "name": "conway-life",
-  "version": "2.0.0-beta3",
+  "version": "2.0.0",
   "description": "离线方块规则模拟器，包含康威生命游戏、电线世界和布赖恩大脑。",
   "main": "electron/main.cjs",
   "author": "huajitongxue",

@@ -33,6 +33,7 @@
     nextGrid: new Uint32Array(COLS * ROWS),
     modeId: null,
     brushState: 1,
+    lineDrawing: false,
     initialized: false,
     previewTimerId: null,
     modeSwitchPending: false,
@@ -96,6 +97,14 @@
     modeSwitchButton: document.getElementById('modeSwitchButton'),
     brushPalette: document.getElementById('brushPalette'),
     editorBrushPalette: document.getElementById('editorBrushPalette'),
+    controlPanel: document.getElementById('controlPanel'),
+    lineDrawButton: document.getElementById('lineDrawButton'),
+    editorLineDrawButton: document.getElementById('editorLineDrawButton'),
+    regionDeleteButton: document.getElementById('regionDeleteButton'),
+    regionDeleteActions: document.getElementById('regionDeleteActions'),
+    regionDeleteSummary: document.getElementById('regionDeleteSummary'),
+    confirmRegionDeleteButton: document.getElementById('confirmRegionDeleteButton'),
+    cancelRegionDeleteButton: document.getElementById('cancelRegionDeleteButton'),
     regionSelectionButton: document.getElementById('regionSelectionButton'),
     regionSelectionBox: document.getElementById('regionSelectionBox'),
     regionSelectionHint: document.getElementById('regionSelectionHint'),
@@ -483,10 +492,15 @@
     });
 
     els.openShapeManagerButton.addEventListener('click', openShapeManager);
-    els.regionSelectionButton.addEventListener('click', toggleRegionSelection);
-    els.regionSelectionButton.addEventListener('keydown', (event) => {
-      if (event.key === ' ' || event.key === 'Enter') event.stopPropagation();
-    });
+    els.regionSelectionButton.addEventListener('click', () => toggleRegionSelection());
+    els.regionDeleteButton.addEventListener('click', () => toggleRegionSelection('delete'));
+    els.confirmRegionDeleteButton.addEventListener('click', confirmRegionDelete);
+    els.cancelRegionDeleteButton.addEventListener('click', cancelRegionSelection);
+    [els.lineDrawButton, els.editorLineDrawButton].forEach((button) => button.addEventListener('click', toggleLineDrawing));
+    [els.regionSelectionButton, els.regionDeleteButton, els.confirmRegionDeleteButton, els.cancelRegionDeleteButton,
+      els.lineDrawButton, els.editorLineDrawButton].forEach((button) => button.addEventListener('keydown', (event) => {
+        if (event.key === ' ' || event.key === 'Enter') event.stopPropagation();
+      }));
     els.closeShapeManagerButton.addEventListener('click', closeShapeManager);
     els.shapeManagerModal.addEventListener('click', (event) => {
       if (event.target === els.shapeManagerModal) closeShapeManager();
@@ -638,6 +652,7 @@
     state.playDirection = 'forward';
     state.mutationEnabled = false;
     state.brushState = 1;
+    state.lineDrawing = false;
     state.presetSelectionMode = false;
     state.selectedPresetKeys.clear();
     state.editorPresetId = null;
@@ -691,6 +706,33 @@
     if (state.modeId === 'wireworld') return [{ value: 1, label: '导线' }, { value: 2, label: '电子头' }, { value: 3, label: '电子尾' }];
     if (state.modeId === 'brain') return [{ value: 1, label: '亮' }, { value: 2, label: '暗色（将熄）' }];
     return [{ value: 1, label: '活细胞' }];
+  }
+
+  function toggleLineDrawing() {
+    if (state.drawing || state.editorDrawing || state.presetDrag || boardLocked()) return;
+    state.lineDrawing = !state.lineDrawing;
+    updatePlayButtons();
+  }
+
+  // 每笔首次跨格确定横纵方向，后续坐标只投影到起点所在行或列。
+  function constrainLineCell(drawing, cell) {
+    if (!drawing.line || !cell) return cell;
+    const dx = cell.x - drawing.startCell.x, dy = cell.y - drawing.startCell.y;
+    if (!drawing.axis && (dx || dy)) drawing.axis = Math.abs(dx) >= Math.abs(dy) ? 'x' : 'y';
+    return drawing.axis === 'y' ? { x: drawing.startCell.x, y: cell.y }
+      : { x: cell.x, y: drawing.startCell.y };
+  }
+
+  function linePointerCell(canvas, event, drawing) {
+    if (!drawing.line) return canvasToCell(canvas, event.clientX, event.clientY);
+    const rect = canvas.getBoundingClientRect();
+    if (!rect.width || !rect.height || !Number.isFinite(event.clientX) || !Number.isFinite(event.clientY)) return null;
+    const cols = canvas === gameCanvas ? COLS : state.editorCols;
+    const rows = canvas === gameCanvas ? ROWS : state.editorRows;
+    return constrainLineCell(drawing, {
+      x: Math.max(0, Math.min(cols - 1, Math.floor((event.clientX - rect.left) / rect.width * cols))),
+      y: Math.max(0, Math.min(rows - 1, Math.floor((event.clientY - rect.top) / rect.height * rows)))
+    });
   }
 
   function setBrush(value) {
@@ -1057,9 +1099,21 @@
     const isRunning = state.running;
     const busy = state.replayIoBusy || state.historyDisablePending || Boolean(state.regionSelection);
     els.regionSelectionButton.disabled = !state.modeId || state.replayIoBusy || state.historyDisablePending || state.modeSwitchPending;
-    els.regionSelectionButton.textContent = state.regionSelection ? '取消框选' : '框选';
-    els.regionSelectionButton.classList.toggle('is-active', Boolean(state.regionSelection));
-    els.regionSelectionButton.setAttribute('aria-pressed', String(Boolean(state.regionSelection)));
+    const selecting = state.regionSelection?.action === 'save';
+    const deleting = state.regionSelection?.action === 'delete';
+    els.regionSelectionButton.textContent = selecting ? '取消框选' : '框选';
+    els.regionSelectionButton.classList.toggle('is-active', selecting);
+    els.regionSelectionButton.setAttribute('aria-pressed', String(selecting));
+    els.regionDeleteButton.disabled = els.regionSelectionButton.disabled || state.reverseReadonly;
+    els.regionDeleteButton.textContent = deleting ? '取消删除' : '框选删除';
+    els.regionDeleteButton.classList.toggle('is-active', deleting);
+    els.regionDeleteButton.setAttribute('aria-pressed', String(deleting));
+    els.regionDeleteActions.hidden = !(deleting && state.regionSelection.ready);
+    [els.lineDrawButton, els.editorLineDrawButton].forEach((button) => {
+      button.classList.toggle('is-active', state.lineDrawing);
+      button.setAttribute('aria-pressed', String(state.lineDrawing));
+      button.disabled = boardLocked() || Boolean(state.drawing || state.editorDrawing || state.presetDrag);
+    });
     els.historyRecordingButton.textContent = state.historyEnabled ? '历史回放：开' : '历史回放：关';
     els.historyRecordingButton.setAttribute('aria-checked', String(state.historyEnabled));
     els.historyRecordingButton.classList.toggle('is-active', state.historyEnabled);
@@ -1379,9 +1433,11 @@
   }
 
   // ===== 主画布绘制与鼠标操作 =====
-  function toggleRegionSelection() {
-    if (state.regionSelection) { cancelRegionSelection(); return; }
+  function toggleRegionSelection(action = 'save') {
+    if (state.regionSelection?.action === action) { cancelRegionSelection(); return; }
     if (!state.modeId || modalOpen()) return;
+    if (action === 'delete' && state.reverseReadonly) return;
+    cancelRegionSelection();
     finishGameDrawing(false);
     stopRunning();
     if (state.presetSelectionMode) exitPresetSelection(false);
@@ -1390,7 +1446,10 @@
     state.historyNavigationId += 1;
     state.presetDrag = null;
     state.preview = null;
-    state.regionSelection = { pointerId: null, start: null, end: null };
+    state.regionSelection = { action, ready: false, pointerId: null, start: null, end: null };
+    els.regionSelectionBox.classList.toggle('is-deleting', action === 'delete');
+    els.regionSelectionHint.textContent = action === 'delete'
+      ? '左键框选后确认删除 · 右键或 Esc 取消' : '左键拖出选框，松开即保存 · 右键或 Esc 取消';
     els.regionSelectionHint.hidden = false;
     els.regionSelectionBox.hidden = true;
     updatePlayButtons();
@@ -1410,6 +1469,7 @@
     releaseRegionPointer(selection);
     els.regionSelectionBox.hidden = true;
     els.regionSelectionHint.hidden = true;
+    els.regionDeleteActions.hidden = true;
     updatePlayButtons();
   }
 
@@ -1466,8 +1526,16 @@
     releaseRegionPointer(selection);
     const shape = extractRegionPattern(selection.start, selection.end);
     if (!shape) {
+      selection.ready = false;
+      updatePlayButtons();
       els.regionSelectionBox.hidden = true;
       showToast('区域内没有方块，请重新框选');
+      return;
+    }
+    if (selection.action === 'delete') {
+      selection.ready = true;
+      els.regionDeleteSummary.textContent = `已选 ${shape.cells.length} 个方块，确认后删除。可重新拖选。`;
+      updatePlayButtons();
       return;
     }
     const id = getNextPresetId();
@@ -1480,6 +1548,30 @@
     renderPresetLibrary();
     els.presetLibrary.scrollTop = els.presetLibrary.scrollHeight;
     showToast(`已保存为${pattern.label}`);
+  }
+
+  function confirmRegionDelete() {
+    const selection = state.regionSelection;
+    if (!selection || selection.action !== 'delete' || !selection.ready || selection.pointerId !== null
+      || state.reverseReadonly || modalOpen()) return;
+    ensureHistory();
+    const minX = Math.min(selection.start.x, selection.end.x), maxX = Math.max(selection.start.x, selection.end.x);
+    const minY = Math.min(selection.start.y, selection.end.y), maxY = Math.max(selection.start.y, selection.end.y);
+    let deleted = 0;
+    for (let y = minY; y <= maxY; y += 1) {
+      for (let x = minX; x <= maxX; x += 1) {
+        const index = y * COLS + x;
+        if (state.grid[index]) deleted += 1;
+        state.grid[index] = 0;
+        state.nextGrid[index] = 0;
+      }
+    }
+    state.population = countPopulation(state.grid);
+    cancelRegionSelection();
+    if (deleted) recordHistory('erase');
+    updateStats();
+    draw();
+    showToast(`已删除 ${deleted} 个方块`);
   }
 
   function finishGameDrawing(resumeRunning) {
@@ -1499,7 +1591,8 @@
         if (event.button === 2) { cancelRegionSelection(); return; }
         const cell = canvasToCell(gameCanvas, event.clientX, event.clientY);
         if (event.button !== 0 || state.regionSelection.pointerId !== null || !cell) return;
-        Object.assign(state.regionSelection, { pointerId: event.pointerId, start: cell, end: cell });
+        Object.assign(state.regionSelection, { ready: false, pointerId: event.pointerId, start: cell, end: cell });
+        updatePlayButtons();
         gameCanvas.setPointerCapture?.(event.pointerId);
         updateRegionSelection(event);
         return;
@@ -1513,8 +1606,9 @@
       const resumeForward = state.running && state.playDirection === 'forward';
       stopRunning();
       const value = event.button === 2 ? 0 : state.brushState;
-      const dragAllowed = event.button === 2 || state.modeId !== 'wireworld' || value === 1;
-      state.drawing = { pointerId: event.pointerId, value, resumeForward, dragAllowed, lastCell: cell };
+      const line = event.button === 0 && state.lineDrawing;
+      const dragAllowed = line || event.button === 2 || state.modeId !== 'wireworld' || value === 1;
+      state.drawing = { pointerId: event.pointerId, value, resumeForward, dragAllowed, lastCell: cell, line, axis: null, startCell: cell };
       gameCanvas.setPointerCapture?.(event.pointerId);
       updatePlayButtons();
       setCell(cell.x, cell.y, state.drawing.value);
@@ -1527,7 +1621,7 @@
       }
       if (boardLocked()) return;
       if (!state.drawing || !state.drawing.dragAllowed || event.pointerId !== state.drawing.pointerId) return;
-      const cell = canvasToCell(gameCanvas, event.clientX, event.clientY);
+      const cell = linePointerCell(gameCanvas, event, state.drawing);
       if (cell) {
         paintGameLine(state.drawing.lastCell, cell, state.drawing.value);
         state.drawing.lastCell = cell;
@@ -1536,7 +1630,7 @@
     const finishDrawing = (event) => {
       if (state.regionSelection) { finishRegionSelection(event); return; }
       if (!state.drawing || event.pointerId !== state.drawing.pointerId) return;
-      const cell = canvasToCell(gameCanvas, event.clientX, event.clientY);
+      const cell = linePointerCell(gameCanvas, event, state.drawing);
       if (cell && state.drawing.dragAllowed) {
         paintGameLine(state.drawing.lastCell, cell, state.drawing.value);
         state.drawing.lastCell = cell;
@@ -2574,12 +2668,14 @@
     };
     editorCanvas.addEventListener('contextmenu', (event) => event.preventDefault());
     editorCanvas.addEventListener('pointerdown', (event) => {
+      if (state.editorDrawing) return;
       if (event.button !== 0 && event.button !== 2) return;
       event.preventDefault();
       const cell = canvasToCell(editorCanvas, event.clientX, event.clientY);
       if (!cell) return;
       const index = cell.y * state.editorCols + cell.x;
-      const canMoveShape = event.button === 0 && state.editorPresetId !== null && state.editorGrid[index] === 0;
+      const line = event.button === 0 && state.lineDrawing;
+      const canMoveShape = !line && event.button === 0 && state.editorPresetId !== null && state.editorGrid[index] === 0;
       // 空白格先等待手势结束：单击新增细胞，超过阈值后才整体移动。
       state.editorDrawing = canMoveShape
         ? {
@@ -2593,9 +2689,9 @@
         : {
           pointerId: event.pointerId,
           mode: event.button === 2 ? 'erase' : 'draw',
-          value: event.button === 2 ? 0 : state.editorGrid[index] === state.brushState ? 0 : state.brushState,
-          dragAllowed: event.button === 2 || state.modeId !== 'wireworld' || state.brushState === 1,
-          lastCell: cell
+          value: event.button === 2 ? 0 : line ? state.brushState : state.editorGrid[index] === state.brushState ? 0 : state.brushState,
+          dragAllowed: line || event.button === 2 || state.modeId !== 'wireworld' || state.brushState === 1,
+          lastCell: cell, line, axis: null, startCell: cell
         };
       editorCanvas.setPointerCapture?.(event.pointerId);
       if (state.editorDrawing.mode !== 'pending-move') setEditorCell(cell.x, cell.y, state.editorDrawing.value);
@@ -2605,15 +2701,18 @@
       const cell = canvasToCell(editorCanvas, event.clientX, event.clientY);
       if (state.editorDrawing.mode === 'pending-move' || state.editorDrawing.mode === 'move') {
         updateMove(event, cell);
-      } else if (cell && state.editorDrawing.dragAllowed) {
-        paintEditorLine(state.editorDrawing.lastCell, cell, state.editorDrawing.value);
-        state.editorDrawing.lastCell = cell;
+      } else if (state.editorDrawing.dragAllowed) {
+        const target = linePointerCell(editorCanvas, event, state.editorDrawing);
+        if (target) {
+          paintEditorLine(state.editorDrawing.lastCell, target, state.editorDrawing.value);
+          state.editorDrawing.lastCell = target;
+        }
       }
     });
     const finish = (event, cancelled = false) => {
       const drawing = state.editorDrawing;
       if (!drawing || event.pointerId !== drawing.pointerId) return;
-      const cell = cancelled ? null : canvasToCell(editorCanvas, event.clientX, event.clientY);
+      const cell = cancelled ? null : linePointerCell(editorCanvas, event, drawing);
       if (!cancelled && (drawing.mode === 'pending-move' || drawing.mode === 'move')) {
         // 松开时也核对位移，兼容中间没有收到 pointermove 的情况。
         updateMove(event, cell);

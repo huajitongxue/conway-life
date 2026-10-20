@@ -42,7 +42,7 @@
           <strong id="activeModeName">康威生命游戏</strong>
           <span id="activeModeEnglish">Game of Life</span>
         </div>
-        <div class="brush-palette" id="brushPalette" role="group" aria-label="场地笔刷"></div>
+        <div class="brush-tools"><div class="brush-palette" id="brushPalette" role="group" aria-label="场地笔刷"></div><button class="line-draw-button toggle-button" id="lineDrawButton" type="button" aria-pressed="false">绘制直线</button></div>
         <button class="mode-switch-button" id="modeSwitchButton" type="button">切换模式</button>
       </header>
     <section class="stage-shell" aria-label="游戏工作区">
@@ -56,7 +56,7 @@
         </div>
       </div>
 
-      <aside class="control-panel" aria-label="游戏控制与预设">
+      <aside class="control-panel" id="controlPanel" aria-label="游戏控制与预设">
         <section class="library" aria-label="预设库">
           <div class="library-heading">
             <div class="library-title-row">
@@ -65,11 +65,16 @@
                 <span>系统预设与自定义预设</span>
               </div>
               <div class="library-tools">
+                <button class="custom-toggle" id="regionDeleteButton" type="button" aria-pressed="false">框选删除</button>
                 <button class="custom-toggle" id="regionSelectionButton" type="button" aria-pressed="false">框选</button>
                 <button class="custom-toggle" id="openShapeManagerButton" type="button">形状管理</button>
               </div>
             </div>
             <p class="library-help" id="libraryHelp">拖拽卡片到场地放置，点击卡片不会改变地图。</p>
+            <div class="region-delete-actions" id="regionDeleteActions" hidden>
+              <p id="regionDeleteSummary" role="status"></p>
+              <button class="danger-button" id="confirmRegionDeleteButton" type="button">确认删除</button><button id="cancelRegionDeleteButton" type="button">取消</button>
+            </div>
             <div class="library-io-row" id="presetIoRow">
               <button class="library-io-button" id="exportPresetsButton" type="button">导出形状</button>
               <button class="library-io-button" id="importPresetsButton" type="button">导入形状</button>
@@ -152,7 +157,7 @@
 
   <aside class="magnifier-panel" id="magnifierPanel" hidden aria-label="放大镜">
     <div class="magnifier-heading"><strong>放大镜</strong><button id="closeMagnifierButton" type="button" aria-label="关闭放大镜">×</button></div>
-    <p class="magnifier-shortcut-hint" id="magnifierShortcutHint">左 Shift：开关放大镜（可在设置中禁用）</p>
+    <p class="magnifier-shortcut-hint" id="magnifierShortcutHint">左 Shift 单独按下松开：开关 · ＋/−：倍率 · 拖动可挪动</p>
     <div class="magnifier-stage">
       <canvas id="magnifierCanvas" width="600" height="360" aria-label="鼠标周围区域的放大预览"></canvas>
       <p id="magnifierEmpty">鼠标移入主场地查看</p>
@@ -183,7 +188,7 @@
         </div>
         <button class="icon-button" id="closeEditorButton" type="button" aria-label="关闭编辑器">×</button>
       </div>
-      <div class="brush-palette editor-brush-palette" id="editorBrushPalette" role="group" aria-label="形状笔刷"></div>
+      <div class="brush-tools editor-brush-palette"><div class="brush-palette" id="editorBrushPalette" role="group" aria-label="形状笔刷"></div><button class="line-draw-button toggle-button" id="editorLineDrawButton" type="button" aria-pressed="false">绘制直线</button></div>
       <div class="editor-stage">
         <canvas id="editorCanvas" width="1200" height="750" aria-label="自定义形状编辑画布"></canvas>
       </div>
