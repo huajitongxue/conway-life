@@ -4,10 +4,28 @@
 // 正式发布由 GitHub Actions 完成（见 .github/workflows/build.yml），本脚本只服务本机试玩。
 const fs = require('node:fs');
 const path = require('node:path');
+const { execFileSync } = require('node:child_process');
 
 const root = path.join(__dirname, '..');
 const version = fs.readFileSync(path.join(root, 'VERSION'), 'utf8').trim();
-const source = path.join(root, 'src-tauri', 'target', 'release', 'conway-life.exe');
+
+// 产物目录不再写死：~/.cargo/config.toml 里可以配置全局 target-dir，
+// 这时产物不在 src-tauri/target。以 cargo metadata 报告的 target_directory 为准。
+function resolveTargetDir() {
+  if (process.env.CARGO_TARGET_DIR) return process.env.CARGO_TARGET_DIR;
+  try {
+    const raw = execFileSync(
+      'cargo',
+      ['metadata', '--format-version', '1', '--no-deps', '--manifest-path', path.join(root, 'src-tauri', 'Cargo.toml')],
+      { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }
+    );
+    return JSON.parse(raw).target_directory;
+  } catch {
+    return path.join(root, 'src-tauri', 'target');
+  }
+}
+
+const source = path.join(resolveTargetDir(), 'release', 'conway-life.exe');
 
 if (!fs.existsSync(source)) {
   console.error(`没有找到 ${source}`);
