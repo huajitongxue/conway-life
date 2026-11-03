@@ -2,6 +2,7 @@
   'use strict';
 
   const MAX_AGE = 0xffffffff;
+  const RULE_110 = 0b01101110;
   const modes = Object.freeze({
     conway: Object.freeze({
       id: 'conway',
@@ -10,6 +11,9 @@
       rule: '三个邻居就出生，两三个就活着，否则死掉',
       defaultSpeed: 10,
       populationLabel: '存活细胞',
+      step(source, target, cols, rows, boundary) {
+        return stepWithNeighbors(source, target, cols, rows, boundary, this);
+      },
       nextState(state, neighbors) {
         const alive = state > 0;
         const count = neighbors[1];
@@ -24,6 +28,9 @@
       rule: '电子头向前移动，导线旁恰有一两个电子头时被点燃',
       defaultSpeed: 4,
       populationLabel: '占用格数',
+      step(source, target, cols, rows, boundary) {
+        return stepWithNeighbors(source, target, cols, rows, boundary, this);
+      },
       nextState(state, neighbors) {
         if (state === 2) return 3;
         if (state === 3) return 1;
@@ -38,10 +45,24 @@
       rule: '亮格变将熄，将熄变暗；恰有两个亮邻居时变亮',
       defaultSpeed: 15,
       populationLabel: '活跃格数',
+      step(source, target, cols, rows, boundary) {
+        return stepWithNeighbors(source, target, cols, rows, boundary, this);
+      },
       nextState(state, neighbors) {
         if (state === 1) return 2;
         if (state === 2) return 0;
         return neighbors[1] === 2 ? 1 : 0;
+      }
+    }),
+    rule110: Object.freeze({
+      id: 'rule110',
+      label: 'Rule 110',
+      english: 'Elementary Cellular Automaton',
+      rule: '每代读取左格、自身和右格，按 01101110 生成下一行',
+      defaultSpeed: 20,
+      populationLabel: '屏内活格',
+      step(source, target, cols, rows) {
+        return stepRule110(source, target, cols, rows);
       }
     })
   });
@@ -52,7 +73,11 @@
     if (source.length !== cols * rows || target.length !== source.length) {
       throw new RangeError('状态数组尺寸不匹配');
     }
+    return mode.step(source, target, cols, rows, boundary);
+  }
 
+  function stepWithNeighbors(source, target, cols, rows, boundary, mode) {
+    // 二维模式共用八邻域计数，状态转换仍由各自的规则决定。
     const neighbors = new Uint8Array(4);
     let population = 0;
     for (let y = 0; y < rows; y += 1) {
@@ -70,7 +95,7 @@
               continue;
             }
             const value = source[ny * cols + nx];
-            const bucket = modeId === 'conway' ? (value > 0 ? 1 : 0) : value;
+            const bucket = mode.id === 'conway' ? (value > 0 ? 1 : 0) : value;
             if (bucket > 0 && bucket < neighbors.length) neighbors[bucket] += 1;
           }
         }
@@ -79,6 +104,33 @@
         target[index] = value;
         if (value > 0) population += 1;
       }
+    }
+    return population;
+  }
+
+  function stepRule110(source, target, cols, rows) {
+    // 同一网格保存时空图：旧行上移，只从源网格最底行推导新一代。
+    const newestRow = (rows - 1) * cols;
+    let population = 0;
+
+    for (let y = 0; y < rows - 1; y += 1) {
+      const sourceRow = (y + 1) * cols;
+      const targetRow = y * cols;
+      for (let x = 0; x < cols; x += 1) {
+        const value = source[sourceRow + x] > 0 ? 1 : 0;
+        target[targetRow + x] = value;
+        population += value;
+      }
+    }
+
+    for (let x = 0; x < cols; x += 1) {
+      const left = x > 0 && source[newestRow + x - 1] > 0 ? 1 : 0;
+      const center = source[newestRow + x] > 0 ? 1 : 0;
+      const right = x < cols - 1 && source[newestRow + x + 1] > 0 ? 1 : 0;
+      const neighborhood = (left << 2) | (center << 1) | right;
+      const value = (RULE_110 >> neighborhood) & 1;
+      target[newestRow + x] = value;
+      population += value;
     }
     return population;
   }
@@ -102,6 +154,8 @@
     } else if (modeId === 'brain') {
       put(Math.floor(cols / 2), Math.floor(rows / 2));
       put(Math.floor(cols / 2) + 1, Math.floor(rows / 2));
+    } else if (modeId === 'rule110') {
+      put(Math.floor(cols / 2), rows - 1);
     }
     return states;
   }

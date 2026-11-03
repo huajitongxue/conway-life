@@ -19,6 +19,7 @@
     if (!frame || !operations.has(frame.operation)) fail('回放包含未知操作');
     if (!integer(frame.generation, 0, Number.MAX_SAFE_INTEGER) || !integer(frame.population, 0, size)) fail('回放的代数或细胞数无效');
     if (frame.boundary !== 'wrap' && frame.boundary !== 'finite') fail('回放边界模式无效');
+    if (mode === 'rule110' && frame.boundary !== 'finite') fail('Rule 110 回放必须使用空白边界');
     if (mode === 'conway') {
       if (typeof frame.mutationEnabled !== 'boolean' || typeof frame.mutationPreferStable !== 'boolean') fail('回放突变开关无效');
       if (!integer(frame.mutationCount, 1, 1000) || !proportion(frame.mutationProbability)
@@ -34,6 +35,7 @@
       if (!integer(value, 0, 0xffffffff)) fail('回放状态值无效');
       if (mode === 'wireworld' && value > 3) fail('电线世界回放包含未知状态');
       if (mode === 'brain' && value > 2) fail('布赖恩大脑回放包含未知状态');
+      if (mode === 'rule110' && value > 1) fail('Rule 110 回放包含未知状态');
       if (value > 0) population += 1;
     }
     if (population !== frame.population) fail('回放细胞数与网格不一致');
@@ -115,6 +117,7 @@
       if (population !== snapshot.population) fail('回放细胞数与网格不一致');
       if (mode === 'wireworld' && snapshot.states.some((value) => value > 3)) fail('电线世界回放包含未知状态');
       if (mode === 'brain' && snapshot.states.some((value) => value > 2)) fail('布赖恩大脑回放包含未知状态');
+      if (mode === 'rule110' && snapshot.states.some((value) => value > 1)) fail('Rule 110 回放包含未知状态');
       if (mode === 'conway') Object.defineProperty(snapshot, 'cellAges', { get: () => snapshot.states, enumerable: false });
       return { operation: frame.operation, snapshot };
     });

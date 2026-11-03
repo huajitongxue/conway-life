@@ -33,6 +33,12 @@
           <span class="mode-card-english">Brian's Brain</span>
           <span class="mode-card-rule">亮格变将熄，将熄变暗；恰有两个亮邻居时变亮</span>
         </button>
+        <button class="mode-card" type="button" data-mode="rule110" aria-label="Rule 110，一维自动机，每代读取左格、自身和右格生成下一行" aria-keyshortcuts="4">
+          <canvas class="mode-preview" width="280" height="196" data-preview="rule110" aria-hidden="true"></canvas>
+          <span class="mode-card-name">Rule 110</span>
+          <span class="mode-card-english">Elementary Cellular Automaton</span>
+          <span class="mode-card-rule">每代读取左格、自身和右格，按 01101110 生成下一行</span>
+        </button>
       </div>
     </section>
 
@@ -89,12 +95,12 @@
           <div class="preset-library" id="presetLibrary"></div>
         </section>
 
-        <div class="stats-row">
+        <div class="stats-row" id="statsRow">
           <div class="stat">
             <span class="stat-label">当前代数</span>
             <strong class="stat-value" id="generationValue">0</strong>
           </div>
-          <div class="stat">
+          <div class="stat" id="populationStat">
             <span class="stat-label" id="populationLabel">存活细胞</span>
             <strong class="stat-value" id="populationValue">0</strong>
           </div>
@@ -171,7 +177,7 @@
       <div class="editor-head">
         <div>
           <h2 id="shapeManagerTitle">形状管理</h2>
-          <p>点形状卡片进入编辑器修改；系统预设不能直接修改，先“复制一份”就能自由改。</p>
+          <p id="shapeManagerHelp">点形状卡片进入编辑器修改；系统预设不能直接修改，先“复制一份”就能自由改。</p>
         </div>
         <button class="icon-button" id="closeShapeManagerButton" type="button" aria-label="关闭形状管理">×</button>
       </div>

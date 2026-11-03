@@ -70,7 +70,7 @@ button:focus-visible, input:focus-visible, canvas:focus-visible {
 .mode-selection-heading { width: min(1120px, 100%); }
 .mode-selection-heading h1 { margin: 0; font-size: 2rem; font-weight: 750; }
 .mode-selection-heading p { margin: 0.35rem 0 0; color: var(--muted); font-size: 0.95rem; }
-.mode-cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.85rem; width: min(1120px, 100%); }
+.mode-cards { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.85rem; width: min(1120px, 100%); }
 .mode-card {
   display: grid;
   align-content: start;
@@ -260,7 +260,9 @@ button:focus-visible, input:focus-visible, canvas:focus-visible {
 .preset-card.is-selected .preset-check { border-color: rgba(214, 226, 230, 0.8); background: #cedbdf; }
 
 .stats-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: stretch; gap: 0.55rem; }
+.stats-row.rule110-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .stat { min-width: 0; padding: 0.4rem 0.5rem; border: 1px solid var(--border); border-radius: 12px; background: rgba(8, 23, 30, 0.52); }
+#populationStat[hidden] { display: none; }
 .stat-label { display: block; color: var(--muted); font-size: 0.7rem; }
 .stat-value { display: block; margin-top: 0.08rem; color: var(--accent); font-size: 1rem; font-variant-numeric: tabular-nums; font-weight: 800; }
 .speed-control { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 0.45rem; min-width: 0; padding: 0.5rem 0.7rem; border: 1px solid var(--border); border-radius: 12px; background: rgba(8, 23, 30, 0.52); }
@@ -383,7 +385,7 @@ button:focus-visible, input:focus-visible, canvas:focus-visible {
 @media (max-width: 900px) {
   .app { height: auto; min-height: 100vh; min-height: 100dvh; }
   .mode-selection { align-content: start; padding: 3vh 0 1rem; }
-  .mode-cards { grid-template-columns: 1fr; max-width: 600px; }
+  .mode-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); max-width: 760px; }
   .mode-card { grid-template-columns: minmax(0, 1fr); }
   .mode-preview { max-height: 180px; }
   .game-page { min-height: 0; }
@@ -401,6 +403,7 @@ button:focus-visible, input:focus-visible, canvas:focus-visible {
 @media (max-width: 560px) {
   .mode-selection { gap: 1rem; }
   .mode-selection-heading h1 { font-size: 1.55rem; }
+  .mode-cards { grid-template-columns: 1fr; max-width: 600px; }
   .mode-card { grid-template-columns: minmax(0, 1fr); }
   .mode-preview { max-height: 130px; }
   .mode-toolbar { flex-wrap: wrap; }

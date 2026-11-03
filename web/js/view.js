@@ -38,7 +38,7 @@
     };
   }
 
-  function create({ canvas, cols, rows, els, blocked, showToast }) {
+  function create({ canvas, cols, rows, els, blocked, showToast, getMode, getGeneration }) {
     let preferences = { ...defaults };
     let colors = globalThis.CONWAY_THEME.palette(preferences);
     let point = null;
@@ -195,7 +195,17 @@
         ratioY = (point.clientY - sourceRect.top) / sourceRect.height;
       }
       els.coordinateValue.hidden = !(visible && leftControl && preferences.coordinates);
-      if (visible) els.coordinateValue.textContent = '(' + Math.floor(ratioX * cols) + ', ' + (rows - 1 - Math.floor(ratioY * rows)) + ')';
+      if (visible) {
+        const column = Math.floor(ratioX * cols);
+        const rowFromBottom = rows - 1 - Math.floor(ratioY * rows);
+        if (getMode?.() === 'rule110') {
+          const generation = Number(getGeneration?.()) - rowFromBottom;
+          els.coordinateValue.textContent = generation >= 0
+            ? `(列 ${column}, 第 ${generation} 代)` : `(列 ${column}, 实验开始前)`;
+        } else {
+          els.coordinateValue.textContent = '(' + column + ', ' + rowFromBottom + ')';
+        }
+      }
       if (!panelArea) return;
       const rect = lens.getBoundingClientRect();
       const dpr = Math.min(window.devicePixelRatio || 1, 2);

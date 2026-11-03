@@ -19,6 +19,7 @@
   const MAX_PRESET_LABEL = 16;
   const DEFAULT_LIBRARY_HELP = '拖拽卡片到场地放置，点击卡片不会改变地图。';
   const SELECT_LIBRARY_HELP = '勾选要导出的形状，再点“导出所选”。';
+  const DEFAULT_STAGE_HINT = '左键绘制 · 右键擦除 · 仅拖拽预设到这里';
   const history = globalThis.CONWAY_HISTORY.create(2000);
 
   const gameCanvas = document.getElementById('gameCanvas');
@@ -110,7 +111,9 @@
     regionSelectionHint: document.getElementById('regionSelectionHint'),
     generationValue: document.getElementById('generationValue'),
     populationValue: document.getElementById('populationValue'),
+    populationStat: document.getElementById('populationStat'),
     populationLabel: document.getElementById('populationLabel'),
+    statsRow: document.getElementById('statsRow'),
     boundaryValue: document.getElementById('boundaryValue'),
     speedRange: document.getElementById('speedRange'),
     speedValue: document.getElementById('speedValue'),
@@ -145,6 +148,7 @@
     shapeManagerModal: document.getElementById('shapeManagerModal'),
     closeShapeManagerButton: document.getElementById('closeShapeManagerButton'),
     shapeManagerList: document.getElementById('shapeManagerList'),
+    shapeManagerHelp: document.getElementById('shapeManagerHelp'),
     editorModal: document.getElementById('editorModal'),
     editorTitle: document.getElementById('editorTitle'),
     editorSubtitle: document.getElementById('editorSubtitle'),
@@ -217,7 +221,7 @@
   };
 
   const viewTools = globalThis.CONWAY_VIEW.create({ canvas: gameCanvas, cols: COLS, rows: ROWS,
-    els, blocked: modalOpen, showToast });
+    els, blocked: modalOpen, showToast, getMode: () => state.modeId, getGeneration: () => state.generation });
   const themeTools = globalThis.CONWAY_THEME.create({ els });
 
   function modalOpen() {
@@ -381,6 +385,9 @@
     },
     brain: {
       spark: makePattern('双格点火', [[0, 0, 1], [1, 0, 1]], 'brain')
+    },
+    rule110: {
+      single: makePattern('单点种子', [[0, 0, 1]], 'rule110')
     }
   };
 
@@ -582,15 +589,22 @@
     const previews = els.modePreviews.map((canvas) => ({
       canvas,
       modeId: canvas.dataset.preview,
-      states: globalThis.CONWAY_AUTOMATA.createPreview(canvas.dataset.preview)
+      states: globalThis.CONWAY_AUTOMATA.createPreview(canvas.dataset.preview),
+      tick: 0
     }));
     if (!previews.length) return;
     const drawPreviews = () => previews.forEach(({ canvas, modeId, states }) => drawModePreview(canvas, states, modeId));
     drawPreviews();
     state.previewTimerId = window.setInterval(() => {
-      previews.forEach(({ states, modeId }) => {
+      previews.forEach((preview) => {
+        const { states, modeId } = preview;
+        if (modeId === 'rule110' && ++preview.tick >= 21) {
+          states.set(globalThis.CONWAY_AUTOMATA.createPreview(modeId));
+          preview.tick = 0;
+          return;
+        }
         const target = new Uint32Array(states.length);
-        globalThis.CONWAY_AUTOMATA.step(states, target, 7, 7, 'wrap', modeId);
+        globalThis.CONWAY_AUTOMATA.step(states, target, 7, 7, modeId === 'rule110' ? 'finite' : 'wrap', modeId);
         states.set(target);
       });
       drawPreviews();
@@ -644,7 +658,7 @@
     state.nextGrid.fill(0);
     state.generation = 0;
     state.population = 0;
-    state.boundary = 'wrap';
+    state.boundary = modeId === 'rule110' ? 'finite' : 'wrap';
     state.speed = mode.defaultSpeed;
     state.running = false;
     state.reverseReadonly = false;
@@ -677,7 +691,9 @@
 
   function setDefaultScene(modeId) {
     state.grid.fill(0);
-    if (modeId === 'brain') {
+    if (modeId === 'rule110') {
+      state.grid[(ROWS - 1) * COLS + Math.floor(COLS / 2)] = 1;
+    } else if (modeId === 'brain') {
       for (let index = 0; index < state.grid.length; index += 1) {
         state.grid[index] = Math.random() < 0.08 ? 1 : 0;
       }
@@ -700,11 +716,18 @@
     els.populationLabel.textContent = mode.populationLabel;
     gameCanvas.setAttribute('aria-label', mode.label + '画布');
     els.mutationFields.hidden = state.modeId !== 'conway';
+    els.populationStat.hidden = state.modeId === 'rule110';
+    els.statsRow.classList.toggle('rule110-stats', state.modeId === 'rule110');
+    els.stageHint.textContent = state.modeId === 'rule110'
+      ? '最底行可绘制；每代新增一行并向上滚动，上方为历史'
+      : DEFAULT_STAGE_HINT;
+    els.boundaryButton.title = state.modeId === 'rule110' ? 'Rule 110 固定使用空白边界' : '切换有限边界与环绕边界';
   }
 
   function getBrushes() {
     if (state.modeId === 'wireworld') return [{ value: 1, label: '导线' }, { value: 2, label: '电子头' }, { value: 3, label: '电子尾' }];
     if (state.modeId === 'brain') return [{ value: 1, label: '亮' }, { value: 2, label: '暗色（将熄）' }];
+    if (state.modeId === 'rule110') return [{ value: 1, label: '活格' }];
     return [{ value: 1, label: '活细胞' }];
   }
 
@@ -724,6 +747,14 @@
   }
 
   function linePointerCell(canvas, event, drawing) {
+    if (state.modeId === 'rule110' && canvas === gameCanvas) {
+      const cell = canvasToCell(canvas, event.clientX, event.clientY);
+      if (cell) return { x: cell.x, y: ROWS - 1 };
+      if (!drawing.line) return null;
+      const rect = canvas.getBoundingClientRect();
+      if (!rect.width || !Number.isFinite(event.clientX)) return null;
+      return { x: Math.max(0, Math.min(COLS - 1, Math.floor((event.clientX - rect.left) / rect.width * COLS))), y: ROWS - 1 };
+    }
     if (!drawing.line) return canvasToCell(canvas, event.clientX, event.clientY);
     const rect = canvas.getBoundingClientRect();
     if (!rect.width || !rect.height || !Number.isFinite(event.clientX) || !Number.isFinite(event.clientY)) return null;
@@ -763,7 +794,7 @@
   function renderBrushPalette() {
     const mode = globalThis.CONWAY_AUTOMATA.modes[state.modeId];
     if (!mode) return;
-    const showPalette = state.modeId !== 'conway';
+    const showPalette = state.modeId === 'wireworld' || state.modeId === 'brain';
     [els.brushPalette, els.editorBrushPalette].forEach((container) => { container.hidden = !showPalette; });
     if (!showPalette) {
       els.brushPalette.replaceChildren();
@@ -1133,7 +1164,7 @@
     els.exitReverseButton.hidden = !state.reverseReadonly;
     els.clearButton.disabled = boardLocked();
     els.randomButton.disabled = boardLocked();
-    els.boundaryButton.disabled = boardLocked();
+    els.boundaryButton.disabled = boardLocked() || state.modeId === 'rule110';
     els.stepButton.disabled = busy || (state.reverseReadonly && !position.forward);
     els.importReplayButton.disabled = boardLocked();
     els.exportReplayButton.disabled = busy || !state.historyEnabled || !position.length;
@@ -1175,11 +1206,17 @@
   function randomize() {
     if (!prepareBoardEdit()) return;
     if (state.running) stopRunning();
-    for (let i = 0; i < state.grid.length; i += 1) {
-      const random = Math.random();
-      if (state.modeId === 'conway') state.grid[i] = random < RANDOM_DENSITY ? 1 : 0;
-      else if (state.modeId === 'wireworld') state.grid[i] = random < 0.2 ? 1 : random < 0.21 ? 2 : random < 0.22 ? 3 : 0;
-      else state.grid[i] = random < 0.08 ? 1 : 0;
+    if (state.modeId === 'rule110') {
+      state.grid.fill(0);
+      const rowStart = (ROWS - 1) * COLS;
+      for (let x = 0; x < COLS; x += 1) state.grid[rowStart + x] = Math.random() < 0.5 ? 1 : 0;
+    } else {
+      for (let i = 0; i < state.grid.length; i += 1) {
+        const random = Math.random();
+        if (state.modeId === 'conway') state.grid[i] = random < RANDOM_DENSITY ? 1 : 0;
+        else if (state.modeId === 'wireworld') state.grid[i] = random < 0.2 ? 1 : random < 0.21 ? 2 : random < 0.22 ? 3 : 0;
+        else state.grid[i] = random < 0.08 ? 1 : 0;
+      }
     }
     state.nextGrid.fill(0);
     state.generation = 0;
@@ -1190,6 +1227,7 @@
   }
 
   function toggleBoundary() {
+    if (state.modeId === 'rule110') return;
     if (!prepareBoardEdit()) return;
     state.boundary = state.boundary === 'wrap' ? 'finite' : 'wrap';
     recordHistory('boundary');
@@ -1211,9 +1249,10 @@
   function updateStats() {
     els.generationValue.textContent = String(state.generation);
     els.populationValue.textContent = String(state.population);
-    els.boundaryValue.textContent = state.boundary === 'wrap' ? '环绕' : '有限';
-    els.boundaryButton.textContent = `边界：${state.boundary === 'wrap' ? '环绕' : '有限'}`;
-    els.boundaryButton.classList.toggle('is-active', state.boundary === 'wrap');
+    const fixedBoundary = state.modeId === 'rule110';
+    els.boundaryValue.textContent = fixedBoundary ? '空白' : state.boundary === 'wrap' ? '环绕' : '有限';
+    els.boundaryButton.textContent = `边界：${fixedBoundary ? '空白' : state.boundary === 'wrap' ? '环绕' : '有限'}`;
+    els.boundaryButton.classList.toggle('is-active', !fixedBoundary && state.boundary === 'wrap');
     els.speedValue.textContent = `${state.speed} 步/秒`;
     if (state.modeId) els.populationLabel.textContent = globalThis.CONWAY_AUTOMATA.modes[state.modeId].populationLabel;
     updatePlayButtons();
@@ -1450,6 +1489,9 @@
     els.regionSelectionBox.classList.toggle('is-deleting', action === 'delete');
     els.regionSelectionHint.textContent = action === 'delete'
       ? '左键框选后确认删除 · 右键或 Esc 取消' : '左键拖出选框，松开即保存 · 右键或 Esc 取消';
+    if (state.modeId === 'rule110') els.regionSelectionHint.textContent = action === 'delete'
+      ? '从最底行拖选种子后确认删除 · 右键或 Esc 取消'
+      : '框选任意单行保存种子 · 右键或 Esc 取消';
     els.regionSelectionHint.hidden = false;
     els.regionSelectionBox.hidden = true;
     updatePlayButtons();
@@ -1478,7 +1520,8 @@
     if (!rect.width || !rect.height || !Number.isFinite(event.clientX) || !Number.isFinite(event.clientY)) return null;
     return {
       x: Math.max(0, Math.min(COLS - 1, Math.floor((event.clientX - rect.left) / rect.width * COLS))),
-      y: Math.max(0, Math.min(ROWS - 1, Math.floor((event.clientY - rect.top) / rect.height * ROWS)))
+      y: state.modeId === 'rule110' && state.regionSelection?.action === 'delete' ? ROWS - 1
+        : Math.max(0, Math.min(ROWS - 1, Math.floor((event.clientY - rect.top) / rect.height * ROWS)))
     };
   }
 
@@ -1538,6 +1581,13 @@
       updatePlayButtons();
       return;
     }
+    if (state.modeId === 'rule110' && shape.height !== 1) {
+      selection.ready = false;
+      updatePlayButtons();
+      els.regionSelectionBox.hidden = true;
+      showToast('Rule 110 种子必须是单行，请重新框选');
+      return;
+    }
     const id = getNextPresetId();
     const pattern = { id, label: `预设${id}`, ...shape };
     const presets = [...state.customPresets, pattern].sort((a, b) => a.id - b.id);
@@ -1557,6 +1607,7 @@
     ensureHistory();
     const minX = Math.min(selection.start.x, selection.end.x), maxX = Math.max(selection.start.x, selection.end.x);
     const minY = Math.min(selection.start.y, selection.end.y), maxY = Math.max(selection.start.y, selection.end.y);
+    if (state.modeId === 'rule110' && (minY !== ROWS - 1 || maxY !== ROWS - 1)) return;
     let deleted = 0;
     for (let y = minY; y <= maxY; y += 1) {
       for (let x = minX; x <= maxX; x += 1) {
@@ -1591,6 +1642,7 @@
         if (event.button === 2) { cancelRegionSelection(); return; }
         const cell = canvasToCell(gameCanvas, event.clientX, event.clientY);
         if (event.button !== 0 || state.regionSelection.pointerId !== null || !cell) return;
+        if (state.modeId === 'rule110' && state.regionSelection.action === 'delete' && cell.y !== ROWS - 1) return;
         Object.assign(state.regionSelection, { ready: false, pointerId: event.pointerId, start: cell, end: cell });
         updatePlayButtons();
         gameCanvas.setPointerCapture?.(event.pointerId);
@@ -1602,6 +1654,7 @@
       event.preventDefault();
       const cell = canvasToCell(gameCanvas, event.clientX, event.clientY);
       if (!cell) return;
+      if (state.modeId === 'rule110' && cell.y !== ROWS - 1) return;
       ensureHistory();
       const resumeForward = state.running && state.playDirection === 'forward';
       stopRunning();
@@ -1651,6 +1704,7 @@
 
   function setCell(x, y, value) {
     if (boardLocked()) return;
+    if (state.modeId === 'rule110' && y !== ROWS - 1) return;
     const index = y * COLS + x;
     const previous = state.grid[index];
     if (state.modeId === 'conway' && value > 0 && previous > 0) return;
@@ -1667,6 +1721,7 @@
   function paintGameLine(from, to, value) {
     let changed = false;
     drawCellLine(from, to, (x, y) => {
+      if (state.modeId === 'rule110' && y !== ROWS - 1) return;
       const index = y * COLS + x;
       const previous = state.grid[index];
       if (state.modeId === 'conway' && value > 0 && previous > 0) return;
@@ -1813,6 +1868,7 @@
   }
 
   function applyPresetTransform(entry, operation) {
+    if (entry.mode === 'rule110' && operation === 'rotateCW') return;
     const transformed = transformPattern(getTransformedPattern(entry), operation);
     state.presetTransforms[entry.key] = {
       width: transformed.width,
@@ -1832,6 +1888,7 @@
       let targetX = originX + x;
       let targetY = originY + y;
 
+      if (state.modeId === 'rule110') targetY = ROWS - 1;
       if (state.boundary === 'wrap') {
         targetX = (targetX + COLS) % COLS;
         targetY = (targetY + ROWS) % ROWS;
@@ -2031,7 +2088,7 @@
       actions.push({ label: '删除', action: () => deletePreset(entry.id), danger: true });
     }
     actions.push({ label: '左右翻转', action: () => applyPresetTransform(entry, 'flipX') });
-    actions.push({ label: '顺时针旋转 90°', action: () => applyPresetTransform(entry, 'rotateCW') });
+    if (entry.mode !== 'rule110') actions.push({ label: '顺时针旋转 90°', action: () => applyPresetTransform(entry, 'rotateCW') });
 
     actions.forEach(({ label, action, danger }) => {
       const button = document.createElement('button');
@@ -2122,9 +2179,11 @@
     const mode = preset?.mode || 'conway';
     const validState = (value) => mode === 'conway' ? value === 1
       : mode === 'wireworld' ? Number.isInteger(value) && value >= 1 && value <= 3
-        : mode === 'brain' ? value === 1 || value === 2 : false;
+        : mode === 'brain' ? value === 1 || value === 2
+          : mode === 'rule110' ? value === 1 : false;
     return preset && globalThis.CONWAY_AUTOMATA.modes[mode]
       && Number.isInteger(Number(preset.id)) && Number(preset.id) > 0 && Number(preset.width) > 0 && Number(preset.height) > 0 &&
+      (mode !== 'rule110' || Number(preset.height) === 1) &&
       Number(preset.width) <= COLS && Number(preset.height) <= ROWS && Array.isArray(preset.cells) && preset.cells.length > 0 &&
       preset.cells.every((cell) => Array.isArray(cell) && (cell.length === 2 || cell.length === 3)
         && Number.isInteger(Number(cell[0])) && Number.isInteger(Number(cell[1]))
@@ -2411,7 +2470,8 @@
       if (!Number.isInteger(x) || !Number.isInteger(y) || x < 0 || y < 0) return null;
       const validState = mode === 'conway' ? value === 1
         : mode === 'wireworld' ? Number.isInteger(value) && value >= 1 && value <= 3
-          : value === 1 || value === 2;
+          : mode === 'brain' ? value === 1 || value === 2
+            : mode === 'rule110' ? value === 1 : false;
       if (!validState) return null;
       unique.set(`${x},${y}`, mode === 'conway' ? [x, y] : [x, y, value]);
     }
@@ -2424,6 +2484,7 @@
     const width = Math.max(...normalized.map(([x]) => x)) + 1;
     const height = Math.max(...normalized.map(([, y]) => y)) + 1;
     if (width > COLS || height > ROWS) return null;
+    if (mode === 'rule110' && height !== 1) return null;
 
     normalized.sort((a, b) => (a[1] - b[1]) || (a[0] - b[0]));
     return { mode, width, height, cells: normalized };
@@ -2486,13 +2547,18 @@
 
   function renderShapeManager() {
     els.shapeManagerList.replaceChildren();
+    els.shapeManagerHelp.textContent = state.modeId === 'rule110'
+      ? 'Rule 110 使用单行种子，二维编辑器不可用。可在场地框选单行另存；预设库菜单支持改名、删除和左右翻转。'
+      : '点形状卡片进入编辑器修改；系统预设不能直接修改，先“复制一份”就能自由改。';
 
-    const createCard = document.createElement('button');
-    createCard.type = 'button';
-    createCard.className = 'shape-manager-card is-new';
-    createCard.textContent = '＋ 新建空白形状';
-    createCard.addEventListener('click', openEditor);
-    els.shapeManagerList.appendChild(createCard);
+    if (state.modeId !== 'rule110') {
+      const createCard = document.createElement('button');
+      createCard.type = 'button';
+      createCard.className = 'shape-manager-card is-new';
+      createCard.textContent = '＋ 新建空白形状';
+      createCard.addEventListener('click', openEditor);
+      els.shapeManagerList.appendChild(createCard);
+    }
 
     getPresetEntries().forEach((entry) => {
       const card = document.createElement('article');
@@ -2502,6 +2568,11 @@
       card.setAttribute('aria-label', entry.type === 'system'
         ? `${entry.label}，系统预设，不能直接修改`
         : `修改${entry.label}`);
+      if (state.modeId === 'rule110') {
+        card.setAttribute('aria-label', `${entry.label}，单行种子，二维编辑器不可用`);
+        card.setAttribute('role', 'group');
+        card.setAttribute('tabindex', '-1');
+      }
 
       const thumb = document.createElement('canvas');
       thumb.className = 'shape-manager-thumb';
@@ -2534,6 +2605,10 @@
       card.append(thumb, top, copy);
 
       const activate = () => {
+        if (state.modeId === 'rule110') {
+          showToast('Rule 110 使用单行种子，不能打开二维形状编辑器');
+          return;
+        }
         if (entry.type === 'system') {
           showToast('系统预设不能直接修改，先“复制一份”再改');
           return;
@@ -2598,6 +2673,10 @@
   }
 
   function openEditor() {
+    if (state.modeId === 'rule110') {
+      showToast('Rule 110 使用单行种子，请通过框选或导入预设');
+      return;
+    }
     // 新建空白形状
     state.editorPresetId = null;
     resetEditorSize();
@@ -2610,6 +2689,10 @@
   }
 
   function openEditorForPreset(id) {
+    if (state.modeId === 'rule110') {
+      showToast('Rule 110 使用单行种子，不能打开二维形状编辑器');
+      return;
+    }
     const preset = state.customPresets.find((item) => item.id === id);
     if (!preset) return;
 
@@ -2943,7 +3026,7 @@
         els.modeCards[next].focus();
         return;
       }
-      if (['1', '2', '3'].includes(event.key)) {
+      if (/^[1-4]$/.test(event.key)) {
         const card = els.modeCards[Number(event.key) - 1];
         if (card) { event.preventDefault(); selectMode(card.dataset.mode); }
         return;
