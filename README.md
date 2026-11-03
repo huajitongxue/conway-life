@@ -4,7 +4,7 @@
 
 **在线试玩**（已发布网页版）：<https://huajitongxue.github.io/conway-life/> —— 直接用浏览器打开即可游玩，无需下载或安装。
 
-当前版本：**v2.1.0**。这是一个**方块规则模拟器**：启动后先选模式，四种规则系统分别是康威生命游戏、电线世界（Wireworld）、布赖恩大脑（Brian's Brain）和 **Rule 110**（一维自动机）。四种模式共用场地、历史回放、回放文件、预设和主题功能。
+当前版本：**v2.1.0-beta1**（预发布，尚未验收）。这是一个**方块规则模拟器**：启动后先选模式，四种规则系统分别是康威生命游戏、电线世界（Wireworld）、布赖恩大脑（Brian's Brain）和 **Rule 110**（一维自动机）。**最新正式版仍是 v2.0.0。**
 
 已发布的桌面版可在 [GitHub Releases](https://github.com/huajitongxue/conway-life/releases) 下载。Electron `.exe` 为免安装程序；Tauri `setup.exe` 和 `.msi` 是两种安装程序，选择一种即可。
 
