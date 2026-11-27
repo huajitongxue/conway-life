@@ -76,20 +76,15 @@
                 <button class="custom-toggle" id="openShapeManagerButton" type="button">形状管理</button>
               </div>
             </div>
-            <p class="library-help" id="libraryHelp">拖拽卡片到场地放置，点击卡片不会改变地图。</p>
+            <p class="library-help" id="libraryHelp">左键拖拽到场地放置，右键卡片打开菜单。</p>
             <div class="region-delete-actions" id="regionDeleteActions" hidden>
               <p id="regionDeleteSummary" role="status"></p>
               <button class="danger-button" id="confirmRegionDeleteButton" type="button">确认删除</button><button id="cancelRegionDeleteButton" type="button">取消</button>
             </div>
             <div class="library-io-row" id="presetIoRow">
-              <button class="library-io-button" id="exportPresetsButton" type="button">导出形状</button>
+              <button class="library-io-button" id="exportPresetsButton" type="button" title="一次导出全部游戏的系统和自定义形状">导出形状</button>
               <button class="library-io-button" id="importPresetsButton" type="button">导入形状</button>
               <input class="library-io-input" id="importPresetsInput" type="file" accept="application/json,.json" aria-label="选择预设文件">
-            </div>
-            <div class="library-select-row" id="presetSelectRow" hidden>
-              <button class="library-io-button" id="selectAllPresetsButton" type="button">全选</button>
-              <button class="library-io-button is-primary" id="exportSelectedButton" type="button">导出所选</button>
-              <button class="library-io-button" id="cancelSelectButton" type="button">取消</button>
             </div>
           </div>
           <div class="preset-library" id="presetLibrary"></div>

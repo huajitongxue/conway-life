@@ -17,8 +17,7 @@
   const MAX_IMPORT_PRESETS = 500;
   const MAX_IMPORT_BYTES = 2 * 1024 * 1024;
   const MAX_PRESET_LABEL = 16;
-  const DEFAULT_LIBRARY_HELP = '拖拽卡片到场地放置，点击卡片不会改变地图。';
-  const SELECT_LIBRARY_HELP = '勾选要导出的形状，再点“导出所选”。';
+  const DEFAULT_LIBRARY_HELP = '左键拖拽到场地放置，右键卡片打开菜单。';
   const DEFAULT_STAGE_HINT = '左键绘制 · 右键擦除 · 仅拖拽预设到这里';
   const history = globalThis.CONWAY_HISTORY.create(2000);
 
@@ -76,8 +75,7 @@
     editorPresetId: null,
     customPresets: [],
     presetTransforms: Object.create(null),
-    presetSelectionMode: false,
-    selectedPresetKeys: new Set(),
+    presetExportBusy: false,
     renamingPresetId: null,
     presetMenu: null,
     presetMenuButton: null,
@@ -206,11 +204,6 @@
     exportPresetsButton: document.getElementById('exportPresetsButton'),
     importPresetsButton: document.getElementById('importPresetsButton'),
     importPresetsInput: document.getElementById('importPresetsInput'),
-    presetIoRow: document.getElementById('presetIoRow'),
-    presetSelectRow: document.getElementById('presetSelectRow'),
-    selectAllPresetsButton: document.getElementById('selectAllPresetsButton'),
-    exportSelectedButton: document.getElementById('exportSelectedButton'),
-    cancelSelectButton: document.getElementById('cancelSelectButton'),
     renameModal: document.getElementById('renameModal'),
     closeRenameButton: document.getElementById('closeRenameButton'),
     cancelRenameButton: document.getElementById('cancelRenameButton'),
@@ -442,18 +435,22 @@
     }
     document.addEventListener('keydown', handleKeydown);
     document.addEventListener('visibilitychange', () => {
-      if (document.hidden) cancelRegionSelection();
+      if (document.hidden) { cancelRegionSelection(); closePresetActionMenu(); }
       if (!state.modeId && !document.hidden) startPreviewAnimation();
       else if (document.hidden) stopPreviewAnimation();
     });
     document.addEventListener('pointerdown', (event) => {
       if (!state.presetMenu) return;
-      if (event.target === state.presetMenuButton || state.presetMenu.contains?.(event.target)) return;
+      if (state.presetMenu.contains?.(event.target)) return;
       closePresetActionMenu();
     });
+    document.addEventListener('scroll', (event) => {
+      if (state.presetMenu && !state.presetMenu.contains?.(event.target)) closePresetActionMenu();
+    }, true);
+    window.addEventListener('resize', () => closePresetActionMenu());
     viewTools.bind();
     themeTools.bind();
-    window.addEventListener('blur', () => { finishGameDrawing(false); cancelRegionSelection(); });
+    window.addEventListener('blur', () => { finishGameDrawing(false); cancelRegionSelection(); closePresetActionMenu(); });
     bindBrushWheel(gameCanvas);
     bindBrushWheel(editorCanvas);
 
@@ -521,7 +518,7 @@
     els.clearEditorButton.addEventListener('click', clearEditor);
     els.saveEditorButton.addEventListener('click', saveEditorPreset);
 
-    els.exportPresetsButton.addEventListener('click', enterPresetSelection);
+    els.exportPresetsButton.addEventListener('click', exportAllPresets);
     els.importPresetsButton.addEventListener('click', () => { cancelRegionSelection(); els.importPresetsInput.click(); });
     els.importPresetsInput.addEventListener('change', () => {
       const file = els.importPresetsInput.files?.[0] || null;
@@ -529,9 +526,6 @@
       els.importPresetsInput.value = '';
       importPresetsFromFile(file);
     });
-    els.selectAllPresetsButton.addEventListener('click', toggleSelectAllPresets);
-    els.exportSelectedButton.addEventListener('click', exportSelectedPresets);
-    els.cancelSelectButton.addEventListener('click', () => exitPresetSelection(true));
 
     els.closeRenameButton.addEventListener('click', closeRenameModal);
     els.cancelRenameButton.addEventListener('click', closeRenameModal);
@@ -667,8 +661,6 @@
     state.mutationEnabled = false;
     state.brushState = 1;
     state.lineDrawing = false;
-    state.presetSelectionMode = false;
-    state.selectedPresetKeys.clear();
     state.editorPresetId = null;
     state.historyNavigationId += 1;
     state.preview = null;
@@ -830,7 +822,6 @@
     if (!state.modeId || state.replayIoBusy || state.historyDisablePending) return;
     cancelRegionSelection();
     finishGameDrawing(false);
-    if (state.presetSelectionMode) exitPresetSelection(false);
     closePresetActionMenu();
     if (!state.historyEnabled) {
       returnToModeSelection();
@@ -864,10 +855,6 @@
     state.preview = null;
     state.presetDrag = null;
     state.historyNavigationId += 1;
-    state.presetSelectionMode = false;
-    state.selectedPresetKeys.clear();
-    els.presetIoRow.hidden = false;
-    els.presetSelectRow.hidden = true;
     els.libraryHelp.textContent = DEFAULT_LIBRARY_HELP;
     showModeSelection();
     renderModeSelector();
@@ -1479,7 +1466,6 @@
     cancelRegionSelection();
     finishGameDrawing(false);
     stopRunning();
-    if (state.presetSelectionMode) exitPresetSelection(false);
     closePresetActionMenu();
     // 让此前开始的预设拖拽失效，迟到的松开事件不能修改场地。
     state.historyNavigationId += 1;
@@ -1817,18 +1803,22 @@
   }
 
   // ===== 预设放置、翻转与渲染 =====
-  function getPresetEntries() {
-    const systemEntries = Object.entries(SYSTEM_PRESETS[state.modeId] || {}).map(([id, pattern]) => ({
+  function getPresetEntries(modeId = state.modeId) {
+    const systemEntries = Object.entries(SYSTEM_PRESETS[modeId] || {}).map(([id, pattern]) => ({
       ...pattern,
       key: `system:${id}`,
       type: 'system'
     }));
-    const customEntries = state.customPresets.filter((pattern) => (pattern.mode || 'conway') === state.modeId).map((pattern) => ({
+    const customEntries = state.customPresets.filter((pattern) => (pattern.mode || 'conway') === modeId).map((pattern) => ({
       ...pattern,
       key: `custom:${pattern.id}`,
       type: 'custom'
     }));
     return [...systemEntries, ...customEntries];
+  }
+
+  function getAllPresetEntries() {
+    return Object.keys(globalThis.CONWAY_AUTOMATA.modes).flatMap((modeId) => getPresetEntries(modeId));
   }
 
   function getTransformedPattern(entry) {
@@ -1907,6 +1897,7 @@
 
   function bindPresetPointer(card, entry) {
     card.addEventListener('pointerdown', (event) => {
+      if (event.button === 0) closePresetActionMenu();
       if (boardLocked()) return;
       if (event.target.closest('button')) return;
       if (event.button !== 0) return;
@@ -1985,13 +1976,33 @@
 
   function renderPresetLibrary() {
     closePresetActionMenu();
+    els.libraryHelp.textContent = DEFAULT_LIBRARY_HELP;
     els.presetLibrary.replaceChildren();
     const entries = getPresetEntries();
 
     entries.forEach((entry) => {
       const card = document.createElement('article');
       card.className = 'preset-card';
-      card.setAttribute('aria-label', `${entry.label}，只能拖拽到场地`);
+      card.setAttribute('aria-label', `${entry.label}，左键拖拽放置，右键打开菜单`);
+      card.setAttribute('role', 'group');
+      card.setAttribute('tabindex', '0');
+      card.setAttribute('aria-haspopup', 'menu');
+      card.setAttribute('aria-expanded', 'false');
+      card.addEventListener('contextmenu', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        openPresetActionMenu(entry, card, { x: event.clientX, y: event.clientY });
+      });
+      card.addEventListener('keydown', (event) => {
+        if (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10')) {
+          event.preventDefault();
+          event.stopPropagation();
+          openPresetActionMenu(entry, card);
+        } else if (event.key === ' ' || event.key === 'Enter') {
+          event.preventDefault();
+          event.stopPropagation();
+        }
+      });
 
       const thumb = document.createElement('canvas');
       thumb.className = 'preset-thumb';
@@ -2010,23 +2021,9 @@
       kind.className = 'preset-kind';
       kind.textContent = entry.type === 'system' ? '系统' : '自定义';
 
-      const menuToggle = document.createElement('button');
-      menuToggle.type = 'button';
-      menuToggle.className = 'preset-menu-toggle';
-      menuToggle.textContent = '+';
-      menuToggle.title = `打开${entry.label}操作菜单`;
-      menuToggle.setAttribute('aria-label', `打开${entry.label}操作菜单`);
-      menuToggle.setAttribute('aria-haspopup', 'menu');
-      menuToggle.addEventListener('pointerdown', (event) => event.stopPropagation());
-      menuToggle.addEventListener('click', (event) => {
-        event.stopPropagation();
-        openPresetActionMenu(entry, menuToggle);
-      });
-
       const footer = document.createElement('div');
       footer.className = 'preset-card-footer';
       footer.append(name);
-      if (!state.presetSelectionMode) cardTop.append(menuToggle);
       if (entry.type === 'system') {
         const systemLabel = document.createElement('span');
         systemLabel.className = 'preset-system-label';
@@ -2036,42 +2033,25 @@
         cardTop.append(kind);
       }
 
-      if (state.presetSelectionMode) {
-        const selected = state.selectedPresetKeys.has(entry.key);
-        card.classList.add('is-selecting');
-        card.classList.toggle('is-selected', selected);
-        card.setAttribute('role', 'checkbox');
-        card.setAttribute('tabindex', '0');
-        card.setAttribute('aria-checked', selected ? 'true' : 'false');
-        card.setAttribute('aria-label', `选择${entry.label}`);
-
-        const check = document.createElement('span');
-        check.className = 'preset-check';
-        check.setAttribute('aria-hidden', 'true');
-        check.textContent = selected ? '✓' : '';
-
-        card.append(cardTop, thumb, check, footer);
-        bindPresetSelection(card, entry, check);
-      } else {
-        card.append(cardTop, thumb, footer);
-        bindPresetPointer(card, entry);
-      }
+      card.append(cardTop, thumb, footer);
+      bindPresetPointer(card, entry);
       els.presetLibrary.appendChild(card);
     });
   }
 
-  function closePresetActionMenu() {
+  function closePresetActionMenu(restoreFocus = false) {
     if (!state.presetMenu) return;
-    state.presetMenu.remove?.();
+    const menu = state.presetMenu;
+    const anchor = state.presetMenuButton;
     state.presetMenu = null;
     state.presetMenuButton = null;
+    anchor?.setAttribute('aria-expanded', 'false');
+    menu.remove?.();
+    if (restoreFocus && anchor?.isConnected !== false) anchor?.focus();
   }
 
-  function openPresetActionMenu(entry, anchor) {
-    if (state.presetMenuButton === anchor) {
-      closePresetActionMenu();
-      return;
-    }
+  function openPresetActionMenu(entry, anchor, position = null) {
+    if (modalOpen() || state.drawing || state.editorDrawing || state.presetDrag) return;
     closePresetActionMenu();
 
     const menu = document.createElement('div');
@@ -2079,6 +2059,22 @@
     menu.setAttribute('role', 'menu');
     menu.setAttribute('aria-label', `${entry.label}操作`);
     menu.addEventListener('pointerdown', (event) => event.stopPropagation());
+    menu.addEventListener('contextmenu', (event) => { event.preventDefault(); event.stopPropagation(); });
+    menu.addEventListener('keydown', (event) => {
+      // 菜单内的空格、方向键等不应同时操作游戏。
+      event.stopPropagation();
+      if (event.key === 'Escape' || event.key === 'Tab') {
+        if (event.key === 'Escape') event.preventDefault();
+        closePresetActionMenu(true);
+      } else if (['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) {
+        event.preventDefault();
+        const items = Array.from(menu.children);
+        const current = items.indexOf(document.activeElement);
+        const index = event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1
+          : (current + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length;
+        items[index]?.focus();
+      }
+    });
 
     const actions = [];
     if (entry.type === 'system') {
@@ -2098,43 +2094,31 @@
       button.setAttribute('role', 'menuitem');
       button.addEventListener('click', (event) => {
         event.stopPropagation();
-        closePresetActionMenu();
+        closePresetActionMenu(true);
         action();
       });
       menu.appendChild(button);
     });
 
     document.body.appendChild(menu);
-    const rect = anchor.getBoundingClientRect();
-    const menuWidth = 170;
-    const menuHeight = actions.length * 34 + 12;
     const viewportWidth = Number(window.innerWidth) || 1200;
     const viewportHeight = Number(window.innerHeight) || 800;
-    const left = Math.min(Math.max(8, rect.left), Math.max(8, viewportWidth - menuWidth - 8));
-    const top = rect.bottom + menuHeight + 8 <= viewportHeight ? rect.bottom + 4 : rect.top - menuHeight - 4;
+    menu.style.maxWidth = `${Math.max(0, viewportWidth - 16)}px`;
+    menu.style.maxHeight = `${Math.max(0, viewportHeight - 16)}px`;
+    const anchorRect = anchor.getBoundingClientRect();
+    const menuRect = menu.getBoundingClientRect();
+    const menuWidth = menuRect.width || 170;
+    const menuHeight = menuRect.height || actions.length * 34 + 12;
+    const desiredX = Number.isFinite(position?.x) ? position.x : anchorRect.left;
+    const desiredY = Number.isFinite(position?.y) ? position.y : anchorRect.bottom + 4;
+    const left = Math.min(Math.max(8, desiredX), Math.max(8, viewportWidth - menuWidth - 8));
+    const top = Math.min(Math.max(8, desiredY), Math.max(8, viewportHeight - menuHeight - 8));
     menu.style.left = `${left}px`;
-    menu.style.top = `${Math.max(8, top)}px`;
+    menu.style.top = `${top}px`;
     state.presetMenu = menu;
     state.presetMenuButton = anchor;
-  }
-
-  function bindPresetSelection(card, entry, check) {
-    const toggle = () => {
-      if (state.selectedPresetKeys.has(entry.key)) state.selectedPresetKeys.delete(entry.key);
-      else state.selectedPresetKeys.add(entry.key);
-      const selected = state.selectedPresetKeys.has(entry.key);
-      card.classList.toggle('is-selected', selected);
-      card.setAttribute('aria-checked', selected ? 'true' : 'false');
-      check.textContent = selected ? '✓' : '';
-      updateSelectControls();
-    };
-    card.addEventListener('click', toggle);
-    card.addEventListener('keydown', (event) => {
-      if (event.key === 'Enter' || event.key === ' ') {
-        event.preventDefault();
-        toggle();
-      }
-    });
+    anchor.setAttribute('aria-expanded', 'true');
+    menu.children[0]?.focus();
   }
 
   function renderPatternThumb(canvas, pattern) {
@@ -2272,71 +2256,31 @@
   }
 
   // ===== 预设导出与导入 =====
-  function enterPresetSelection() {
+  async function exportAllPresets() {
+    if (state.presetExportBusy) return false;
     cancelRegionSelection();
-    const entries = getPresetEntries();
-    if (!entries.length) {
-      showToast('预设库是空的，没有可导出的形状');
-      return;
+    closePresetActionMenu();
+    state.presetExportBusy = true;
+    els.exportPresetsButton.disabled = true;
+    try {
+      const entries = getAllPresetEntries();
+      if (!entries.length) throw new Error('预设库是空的，没有可导出的形状');
+      // 使用与导入相同的上限，避免生成本程序无法再导入的备份。
+      if (entries.length > MAX_IMPORT_PRESETS) throw new Error(`形状总数超过 ${MAX_IMPORT_PRESETS} 个，无法导出单个备份文件`);
+      const contents = buildPresetPayload(entries);
+      if (new TextEncoder().encode(contents).byteLength > MAX_IMPORT_BYTES) throw new Error('形状备份超过文件大小上限，无法导出');
+      // 原生分支保留实际保存路径、取消和错误提示。
+      if (canSaveWithDialog()) return await savePresetsWithDialog(entries, contents);
+      if (!downloadPresetFile(entries, contents)) return false;
+      showToast(`已导出全部游戏的 ${entries.length} 个形状`);
+      return true;
+    } catch (error) {
+      showToast(error?.message || '导出失败');
+      return false;
+    } finally {
+      state.presetExportBusy = false;
+      els.exportPresetsButton.disabled = false;
     }
-    state.presetSelectionMode = true;
-    state.selectedPresetKeys.clear();
-    els.presetIoRow.hidden = true;
-    els.presetSelectRow.hidden = false;
-    els.libraryHelp.textContent = SELECT_LIBRARY_HELP;
-    renderPresetLibrary();
-    updateSelectControls();
-    showToast('勾选要导出的形状，再点“导出所选”');
-  }
-
-  function exitPresetSelection(showMessage) {
-    if (!state.presetSelectionMode) return;
-    state.presetSelectionMode = false;
-    state.selectedPresetKeys.clear();
-    els.presetIoRow.hidden = false;
-    els.presetSelectRow.hidden = true;
-    els.libraryHelp.textContent = DEFAULT_LIBRARY_HELP;
-    renderPresetLibrary();
-    if (showMessage) showToast('已取消导出');
-  }
-
-  function updateSelectControls() {
-    const total = getPresetEntries().length;
-    const count = state.selectedPresetKeys.size;
-    els.exportSelectedButton.textContent = count ? `导出所选（${count}）` : '导出所选';
-    els.selectAllPresetsButton.textContent = count && count === total ? '全不选' : '全选';
-  }
-
-  function toggleSelectAllPresets() {
-    const entries = getPresetEntries();
-    const allSelected = entries.length > 0 && state.selectedPresetKeys.size === entries.length;
-    state.selectedPresetKeys.clear();
-    if (!allSelected) entries.forEach((entry) => state.selectedPresetKeys.add(entry.key));
-    renderPresetLibrary();
-    updateSelectControls();
-  }
-
-  function exportSelectedPresets() {
-    const entries = getPresetEntries().filter((entry) => state.selectedPresetKeys.has(entry.key));
-    if (!entries.length) {
-      showToast('请先勾选要导出的形状');
-      return;
-    }
-
-    const finish = () => exitPresetSelection(false);
-
-    // 桌面版走原生“另存为”对话框：WebView 自己的下载既不弹窗也不提示，用户找不到文件。
-    // 这条路径的提示由 savePresetsWithDialog 给出实际落盘路径，这里不再覆盖。
-    if (canSaveWithDialog()) {
-      savePresetsWithDialog(entries).then((saved) => {
-        if (saved) finish();
-      });
-      return;
-    }
-
-    if (!downloadPresetFile(entries)) return;
-    finish();
-    showToast(`已导出 ${entries.length} 个形状`);
   }
 
   function presetFileName() {
@@ -2364,11 +2308,11 @@
     return Boolean(globalThis.__TAURI__?.core?.invoke);
   }
 
-  function savePresetsWithDialog(entries) {
+  function savePresetsWithDialog(entries, contents = buildPresetPayload(entries)) {
     return globalThis.__TAURI__.core
       .invoke('export_presets_file', {
         fileName: presetFileName(),
-        contents: buildPresetPayload(entries)
+        contents
       })
       .then((savedPath) => {
         if (!savedPath) {
@@ -2385,13 +2329,13 @@
       });
   }
 
-  function downloadPresetFile(entries) {
+  function downloadPresetFile(entries, contents = buildPresetPayload(entries)) {
     if (typeof Blob !== 'function' || typeof URL.createObjectURL !== 'function') {
       showToast('当前环境不支持导出文件');
       return false;
     }
 
-    const blob = new Blob([buildPresetPayload(entries)], { type: 'application/json' });
+    const blob = new Blob([contents], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
@@ -2423,9 +2367,11 @@
         const result = mergeImportedPresets(String(reader.result));
         renderPresetLibrary();
         els.presetLibrary.scrollTop = els.presetLibrary.scrollHeight;
-        showToast(result.skipped
-          ? `已导入 ${result.count} 个预设，跳过 ${result.skipped} 个无效项`
-          : `已导入 ${result.count} 个预设`);
+        const details = [`已导入 ${result.count} 个预设`];
+        if (result.duplicates) details.push(`跳过 ${result.duplicates} 个重复项`);
+        if (result.skipped) details.push(`跳过 ${result.skipped} 个无效项`);
+        if (result.renamed) details.push(`${result.renamed} 个重名预设已加数字区分`);
+        showToast(details.join('，'));
       } catch (error) {
         showToast(error && error.message ? error.message : '导入失败');
       }
@@ -2495,11 +2441,32 @@
     return text || `预设${fallbackId}`;
   }
 
+  function presetShapeKey(preset) {
+    const normalized = normalizeImportedPreset(preset);
+    if (!normalized) return null;
+    // 名称、编号、外围空白和原始坐标顺序都不影响形状身份。
+    return JSON.stringify([normalized.mode, normalized.cells.map(([x, y, value = 1]) => [x, y, value])]);
+  }
+
+  function uniqueImportedLabel(label, usedNames) {
+    if (!usedNames.has(label)) return label;
+    for (let number = 1; ; number += 1) {
+      const suffix = String(number);
+      const candidate = label.slice(0, MAX_PRESET_LABEL - suffix.length) + suffix;
+      if (!usedNames.has(candidate)) return candidate;
+    }
+  }
+
   function mergeImportedPresets(text) {
     const list = parsePresetFile(text);
+    const existing = getAllPresetEntries();
+    const knownShapes = new Set(existing.map(presetShapeKey).filter((key) => key !== null));
+    const usedNames = new Set(existing.map((preset) => preset.label));
     const used = new Set(state.customPresets.map((preset) => preset.id));
     const accepted = [];
     let skipped = 0;
+    let duplicates = 0;
+    let renamed = 0;
 
     list.forEach((entry) => {
       const pattern = normalizeImportedPreset(entry);
@@ -2507,13 +2474,23 @@
         skipped += 1;
         return;
       }
-      // 编号仍取当前最小可用值；名称沿用文件里的名字，缺失时才回退成“预设N”。
+      const key = presetShapeKey(pattern);
+      if (knownShapes.has(key)) {
+        duplicates += 1;
+        return;
+      }
+      // 只有实际新增的形状才占用编号和名称；同一文件中先出现的形状优先。
       let nextId = 1;
       while (used.has(nextId)) nextId += 1;
       used.add(nextId);
+      const originalLabel = normalizeImportedLabel(entry.label, nextId);
+      const label = uniqueImportedLabel(originalLabel, usedNames);
+      if (label !== originalLabel) renamed += 1;
+      knownShapes.add(key);
+      usedNames.add(label);
       accepted.push({
         id: nextId,
-        label: normalizeImportedLabel(entry.label, nextId),
+        label,
         mode: pattern.mode,
         width: pattern.width,
         height: pattern.height,
@@ -2521,12 +2498,13 @@
       });
     });
 
-    if (!accepted.length) throw new Error('文件里没有可导入的预设');
-
-    state.customPresets.push(...accepted);
-    state.customPresets.sort((a, b) => a.id - b.id);
-    persistCustomPresets();
-    return { count: accepted.length, skipped };
+    if (!accepted.length && !duplicates) throw new Error('文件里没有可导入的预设');
+    if (accepted.length) {
+      const candidate = [...state.customPresets, ...accepted].sort((a, b) => a.id - b.id);
+      if (!persistCustomPresets(candidate)) throw new Error('无法保存导入的预设，原预设库已保留');
+      state.customPresets = candidate;
+    }
+    return { count: accepted.length, skipped, duplicates, renamed };
   }
 
   // ===== 形状管理弹窗 =====
@@ -2972,6 +2950,13 @@
   }
 
   function handleKeydown(event) {
+    if (state.presetMenu) {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        closePresetActionMenu(true);
+      }
+      return;
+    }
     if (state.regionSelection && event.key === 'Escape') {
       event.preventDefault();
       cancelRegionSelection();
@@ -2988,10 +2973,6 @@
       cancelReplayImport(); return;
     }
     if (event.key === 'Escape') {
-      if (state.presetMenu) {
-        closePresetActionMenu();
-        return;
-      }
       if (els.mutationModal.classList.contains('is-open')) {
         cancelMutationSettings();
         return;
@@ -3006,10 +2987,6 @@
       }
       if (els.editorModal.classList.contains('is-open')) {
         closeEditor();
-        return;
-      }
-      if (state.presetSelectionMode) {
-        exitPresetSelection(true);
         return;
       }
     }

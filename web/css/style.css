@@ -174,7 +174,6 @@ button:focus-visible, input:focus-visible, canvas:focus-visible {
 .library-help { margin: 0; }
 .custom-toggle { padding: 0.45rem 0.6rem; font-size: 0.76rem; font-weight: 700; }
 .library-io-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.4rem; margin-top: 0.42rem; }
-.library-select-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.4rem; margin-top: 0.42rem; }
 .library-io-button { min-width: 0; padding: 0.38rem 0.5rem; border-radius: 10px; color: var(--muted); font-size: 0.74rem; line-height: 1.2; }
 .library-io-button:hover { color: var(--accent); }
 .library-io-button.is-primary { border-color: rgba(var(--accent-rgb), 0.45); background: var(--accent-soft); color: var(--accent); font-weight: 700; }
@@ -218,46 +217,12 @@ button:focus-visible, input:focus-visible, canvas:focus-visible {
 .preset-card-footer { min-width: 0; }
 .preset-name { display: block; min-width: 0; width: 100%; overflow: hidden; color: var(--text); font-size: 0.76rem; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
 .preset-kind { flex: none; color: var(--muted); font-size: 0.64rem; }
-.preset-menu-toggle { display: grid; place-items: center; width: 1.28rem; height: 1.28rem; margin: -0.08rem 0.1rem 0 -0.08rem; padding: 0; border-radius: 6px; color: var(--accent); font-size: 1rem; font-weight: 800; line-height: 1; }
-.preset-menu-toggle:hover { color: var(--text); }
 .preset-system-label { color: var(--muted); font-size: 0.7rem; }
 .preset-system-label { cursor: default; }
 .preset-action-menu { position: fixed; z-index: 40; display: grid; width: min(170px, calc(100vw - 1rem)); max-height: calc(100vh - 1rem); overflow-y: auto; gap: 0.2rem; padding: 0.35rem; border: 1px solid var(--border-strong); border-radius: 11px; background: rgba(9, 25, 32, 0.98); box-shadow: var(--shadow); }
 .preset-action-menu-item { width: 100%; padding: 0.38rem 0.55rem; border: 0; border-radius: 7px; color: var(--muted); background: transparent; font-size: 0.75rem; text-align: left; }
 .preset-action-menu-item:hover { color: var(--accent); background: var(--accent-soft); }
 .preset-action-menu-item.is-danger:hover { color: #ffb4c4; background: rgba(255, 123, 150, 0.12); }
-
-/* 选择导出模式：卡片整块可点，勾选后变灰 */
-.preset-card.is-selecting { cursor: pointer; user-select: none; }
-.preset-card.is-selecting:hover { transform: none; }
-.preset-card.is-selecting .preset-card-top { padding: 0 0.2rem 0 1.5rem; }
-.preset-card.is-selecting .preset-menu-toggle { display: none; }
-.preset-card.is-selected,
-.preset-card.is-selected:hover {
-  border-color: rgba(198, 212, 216, 0.62);
-  background: rgba(126, 140, 146, 0.34);
-  box-shadow: inset 0 0 0 1px rgba(206, 219, 223, 0.24);
-}
-.preset-card.is-selected .preset-thumb { opacity: 0.5; filter: grayscale(0.75); }
-.preset-card.is-selected .preset-name { color: #eef5f6; }
-.preset-check {
-  position: absolute;
-  top: 0.42rem;
-  left: 0.42rem;
-  z-index: 2;
-  display: grid;
-  place-items: center;
-  width: 1.15rem;
-  height: 1.15rem;
-  border: 1px solid var(--border-strong);
-  border-radius: 5px;
-  background: rgba(6, 20, 26, 0.92);
-  color: #12232a;
-  font-size: 0.78rem;
-  font-weight: 800;
-  line-height: 1;
-}
-.preset-card.is-selected .preset-check { border-color: rgba(214, 226, 230, 0.8); background: #cedbdf; }
 
 .stats-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: stretch; gap: 0.55rem; }
 .stats-row.rule110-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
